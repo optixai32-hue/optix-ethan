@@ -344,26 +344,23 @@ export const AgentTimeline = React.memo(function AgentTimeline({
     toolProcessingDuration,
   ]);
 
-  // Empty state: no packets, still streaming, and not stopped. The agent
-  // avatar/logo is deliberately omitted — the shimmer alone signals activity
-  // and aligns with the answer text that replaces it once streaming starts
-  // (same row height, same left padding as the final answer block).
+  // Empty state: no packets, still streaming, and not stopped
   if (uiState === TimelineUIState.EMPTY) {
     return (
-      <div className="flex h-(--timeline-header-row-height) w-full items-center px-3">
-        <TextLoader>{headerText}</TextLoader>
-      </div>
+      <TimelineContainer
+        agent={chatState.agent}
+        headerContent={
+          <div className="flex w-full h-full items-center ps-(--timeline-header-padding-left) pe-(--timeline-header-padding-right)">
+            <TextLoader>{headerText}</TextLoader>
+          </div>
+        }
+      />
     );
   }
 
-  // Display content only (no timeline steps): render nothing. The answer
-  // streams directly below — without this, TimelineContainer would still
-  // render the header row showing a lone agent avatar/logo floating at the
-  // top of the response for the whole stream (and after completion).
-  // Image generation keeps its header: it routes to STREAMING_SEQUENTIAL,
-  // never to this state.
+  // Display content only (no timeline steps) - but show header for image generation
   if (uiState === TimelineUIState.DISPLAY_CONTENT_ONLY) {
-    return null;
+    return <TimelineContainer agent={chatState.agent} />;
   }
 
   return (
