@@ -301,7 +301,9 @@ async function proxyToBackend(
 async function handleRequest(request: NextRequest, path: string[]) {
   console.log("[DIAG] handleRequest hit:", request.method, path.join("/"));
   if (path[0] === "__diag") {
-    return NextResponse.json({ ok: true, path, ts: new Date().toISOString() });
+    const probe = NextResponse.json({ ok: true, path, ts: new Date().toISOString() });
+    console.log("[DIAG] probe returning", probe.status);
+    return probe;
   }
   if (IS_VERCEL_RUNTIME) {
     // Single deployment: the backend lives inside this function.
