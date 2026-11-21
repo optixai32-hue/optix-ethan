@@ -1,6 +1,6 @@
 import { authErrorRedirect } from "@/app/auth/libSS";
 import { getDomain } from "@/lib/redirectSS";
-import { buildUrl } from "@/lib/utilsSS";
+import { buildUrlAsync } from "@/lib/utilsSS";
 import { NextRequest, NextResponse } from "next/server";
 
 // A provider-row Google flow round-trips its row name inside the signed
@@ -24,7 +24,7 @@ export const GET = async (request: NextRequest) => {
   // flows land here too and are dispatched to the row callback.
   const rowFlow = isProviderRowState(request.nextUrl.searchParams.get("state"));
   const url = new URL(
-    buildUrl(rowFlow ? "/auth/oidc/callback" : "/auth/oauth/callback")
+    buildUrlAsync(rowFlow ? "/auth/oidc/callback" : "/auth/oauth/callback")
   );
   url.search = request.nextUrl.search;
   const cookieHeader = request.headers.get("cookie") || "";

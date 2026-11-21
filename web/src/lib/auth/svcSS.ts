@@ -1,7 +1,7 @@
 import type { ErrorResponseBody } from "@/lib/fetcher";
 import "server-only";
 
-import { buildUrl, UrlBuilder } from "@/lib/utilsSS";
+import { buildUrlAsync, UrlBuilder } from "@/lib/utilsSS";
 import { getDomain } from "@/lib/redirectSS";
 import { NEXT_PUBLIC_CLOUD_ENABLED } from "@/lib/constants";
 import { headers } from "next/headers";
@@ -13,7 +13,7 @@ import { hasAnyAdminPermission } from "@/lib/permissions/utils";
 import { getCurrentUserSS } from "@/lib/users/svcSS";
 
 export async function getAuthTypeMetadataSS(): Promise<AuthTypeMetadata> {
-  const res = await fetch(buildUrl("/auth/type"));
+  const res = await fetch(await buildUrlAsync("/auth/type"));
   if (!res.ok) {
     throw new Error("Failed to fetch data");
   }
@@ -82,7 +82,7 @@ export async function getAuthUrlSS(
 }
 
 async function logoutStandardSS(headers: Headers): Promise<Response> {
-  return fetch(buildUrl("/auth/logout"), { method: "POST", headers });
+  return fetch(await buildUrlAsync("/auth/logout"), { method: "POST", headers });
 }
 
 export async function logoutSS(headers: Headers): Promise<Response | null> {

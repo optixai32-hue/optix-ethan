@@ -1,5 +1,5 @@
 import { getDomain } from "@/lib/redirectSS";
-import { buildUrl } from "@/lib/utilsSS";
+import { buildUrlAsync } from "@/lib/utilsSS";
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import {
@@ -19,7 +19,7 @@ export const GET = async (
   const requestCookies = await cookies();
 
   const callbackEndpoint = `/manage/connector/${connector}/callback`;
-  const url = new URL(buildUrl(callbackEndpoint));
+  const url = new URL(await buildUrlAsync(callbackEndpoint));
   url.search = request.nextUrl.search;
 
   const response = await fetch(url.toString(), {

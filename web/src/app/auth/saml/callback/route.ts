@@ -1,7 +1,7 @@
 import { authErrorRedirect } from "@/app/auth/libSS";
 import { validateInternalRedirect } from "@/lib/auth/utils";
 import { getDomain } from "@/lib/redirectSS";
-import { buildUrl } from "@/lib/utilsSS";
+import { buildUrlAsync } from "@/lib/utilsSS";
 import { NextRequest, NextResponse } from "next/server";
 
 // have to use this so we don't hit the redirect URL with a `POST` request
@@ -13,7 +13,7 @@ async function handleSamlCallback(
 ) {
   // Wrapper around the FastAPI endpoint /auth/saml/callback,
   // which adds back a redirect to the main app.
-  const url = new URL(buildUrl("/auth/saml/callback"));
+  const url = new URL(await buildUrlAsync("/auth/saml/callback"));
   url.search = request.nextUrl.search;
 
   const fetchOptions: RequestInit = {

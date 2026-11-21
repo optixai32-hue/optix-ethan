@@ -1,12 +1,12 @@
 import { authErrorRedirect } from "@/app/auth/libSS";
 import { getDomain } from "@/lib/redirectSS";
-import { buildUrl } from "@/lib/utilsSS";
+import { buildUrlAsync } from "@/lib/utilsSS";
 import { NextRequest, NextResponse } from "next/server";
 
 export const GET = async (request: NextRequest) => {
   // Wrapper around the FastAPI endpoint /auth/oidc/callback,
   // which adds back a redirect to the main app.
-  const url = new URL(buildUrl("/auth/oidc/callback"));
+  const url = new URL(await buildUrlAsync("/auth/oidc/callback"));
   url.search = request.nextUrl.search;
   const cookieHeader = request.headers.get("cookie") || "";
 

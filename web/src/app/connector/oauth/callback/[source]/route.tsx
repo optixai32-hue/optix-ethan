@@ -1,4 +1,4 @@
-import { INTERNAL_URL } from "@/lib/constants";
+import { buildUrlAsync } from "@/lib/utilsSS";
 import { NextRequest, NextResponse } from "next/server";
 import type { ErrorResponseBody } from "@/lib/fetcher";
 
@@ -12,9 +12,12 @@ interface OAuthCallbackProxyBody extends ErrorResponseBody {
 
 export async function GET(request: NextRequest) {
   try {
-    const backendUrl = new URL(INTERNAL_URL);
+    // NOTE: resolve against the live request host (public alias on Vercel) and
+    // keep the /api prefix — otherwise this fetch would re-enter this very
+    // route handler instead of reaching the backend.
+    const backendUrl = new URL(await buildUrlAsync("/api"));
     // Copy path and query parameters from incoming request
-    backendUrl.pathname = request.nextUrl.pathname;
+    backendUrl.pathname = `/api${request.nextUrl.pathname}`;
     backendUrl.search = request.nextUrl.search;
 
     const response = await fetch(backendUrl, {
