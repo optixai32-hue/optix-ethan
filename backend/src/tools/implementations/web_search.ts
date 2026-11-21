@@ -61,8 +61,6 @@ export const webSearchTool: Tool = {
   id: WEB_SEARCH_TOOL_ID,
   name: WEB_SEARCH_TOOL_ID,
   displayName: "Web Search",
-  /** Upstream in-code id (onyx/tools/constants.py WEB_SEARCH_TOOL_ID). */
-  inCodeToolId: "WebSearchTool",
   description: WEB_SEARCH_DESCRIPTION,
   inputSchema: {
     type: "object",

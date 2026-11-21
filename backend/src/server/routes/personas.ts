@@ -20,8 +20,6 @@ import { InvalidRequestError } from "../../utils/errors";
 import { getAuthContext } from "./chat";
 import { query, queryOne } from "../../db/client";
 import type { User } from "../../types/domain";
-import { registerBuiltInTools } from "../../tools/built_in_tools";
-import { buildToolSnapshots } from "../../tools/snapshot";
 
 const logger = getLogger("routes.persona");
 
@@ -53,26 +51,9 @@ function isAdmin(user: User): boolean {
 }
 
 /**
- * Tool snapshots attached to every assistant snapshot. Upstream joins
- * persona<->tool rows; this deployment offers the built-in tool set (search,
- * web search, image generation, open URL, memory) to every assistant, which
- * is what powers the ToolsPopover list and the Deep Research toggle
- * (hasSearchToolsAvailable keys on the SearchTool/WebSearchTool in-code ids).
- */
-function personaTools(): Array<Record<string, unknown>> {
-  try {
-    registerBuiltInTools();
-    return buildToolSnapshots();
-  } catch {
-    return [];
-  }
-}
-
-/**
  * Port of MinimalPersonaSnapshot.from_model + list-endpoint permission
  * stamping for a fresh single-tenant deployment: no labels, no owner
- * (builtins are ownerless), no document sets / knowledge; tools = the shared
- * built-in tool set.
+ * (builtins are ownerless), no document sets / knowledge, no tools.
  */
 function toMinimalPersonaSnapshot(
   row: PersonaListRow,
@@ -85,7 +66,7 @@ function toMinimalPersonaSnapshot(
     id: row.id,
     name: row.name,
     description: row.description,
-    tools: personaTools(),
+    tools: [],
     starter_messages: row.starter_messages ?? null,
     document_sets: [],
     hierarchy_node_count: 0,

@@ -54,11 +54,7 @@ let defaultProviderCache:
   | { providerId: string; modelName: string; fetchedAt: number }
   | null = null;
 
-/**
- * DB-backed default provider/model resolution — exported so the chat turn can
- * attribute the resolved model name to the message (model_display_name).
- */
-export async function resolveDefaultProvider(): Promise<{
+async function resolveDefaultProvider(): Promise<{
   providerId: string;
   modelName: string;
 }> {
@@ -108,20 +104,6 @@ export async function resolveDefaultProvider(): Promise<{
 }
 
 /**
- * Normalize provider ids coming from the DB / admin surface / frontend
- * llm_override payloads. The admin UI sends `openai_compatible` (underscore,
- * web/src/lib/languageModels/types.ts) while this factory registers
- * `openai-compatible` (hyphen) — without the alias, UI-created providers
- * silently fall back to the default provider.
- */
-export function normalizeProviderId(providerId: string): string {
-  if (providerId === "openai_compatible" || providerId === "openai compatible") {
-    return "openai-compatible";
-  }
-  return providerId;
-}
-
-/**
  * Resolve an LLMProvider (async: the default provider/model comes from the
  * DB when no explicit providerId/modelName is given).
  * getLLMProvider(providerId?: string, modelName?: string): Promise<LLMProvider>.
@@ -130,14 +112,13 @@ export async function getLLMProvider(
   providerId?: string,
   modelName?: string,
 ): Promise<LLMProvider> {
-  const provider = providerId ? normalizeProviderId(providerId) : providerId;
-  if (provider === "openai-compatible") {
+  if (providerId === "openai-compatible") {
     return new OpenaiCompatProvider(modelName ?? OPENAI_MODEL);
   }
-  if (provider === "zai") {
+  if (providerId === "zai") {
     return getZaiSingleton(modelName ?? DEFAULT_FAST_MODEL);
   }
-  if (provider === undefined || provider === "") {
+  if (providerId === undefined || providerId === "") {
     // Unset provider id: follow the DB-backed default (admin-managed),
     // falling back to env routing when the lookup yields nothing.
     const def = await resolveDefaultProvider();

@@ -105,12 +105,6 @@ export default function ToolsPopover({
     );
   });
 
-  // Cloud-style availability indicator: the total number of actions (built-in
-  // tools + connectable plugins) shown as a "+N" pill on the trigger, so the
-  // breadth of the action catalog is visible without opening the popover.
-  const pluginCatalogCount = catalog.plugins.length;
-  const totalAvailableActions = displayTools.length + pluginCatalogCount;
-
   return (
     <ToolsPopoverProvider
       agent={agent}
@@ -129,7 +123,7 @@ export default function ToolsPopover({
         }}
       >
         <Popover.Trigger asChild>
-          <div data-testid="action-management-toggle" className="relative">
+          <div data-testid="action-management-toggle">
             <Button
               disabled={disabled}
               icon={SvgSliders}
@@ -138,19 +132,6 @@ export default function ToolsPopover({
               tooltip={t("toolsPopover.manageActions.tooltip")}
               aria-label={t("toolsPopover.manageActions.tooltip")}
             />
-            {totalAvailableActions > 0 && (
-              <span
-                data-testid="action-count-badge"
-                className={
-                  "pointer-events-none absolute -top-1 -right-1 flex h-4 min-w-4 " +
-                  "items-center justify-center rounded-full px-1 " +
-                  "bg-background-tint-03 text-text-04 " +
-                  "text-[10px] font-medium leading-none select-none"
-                }
-              >
-                +{totalAvailableActions}
-              </span>
-            )}
           </div>
         </Popover.Trigger>
         <Popover.Content side="bottom" align="start" width={60}>

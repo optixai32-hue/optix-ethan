@@ -60,19 +60,6 @@ export class StreamEmitter {
   }
 
   /**
-   * Emit a structured packet nested under a sub-turn (Deep Research research
-   * agent tool calls — placement.sub_turn_index on the wire).
-   */
-  sendObjectSub(type: PacketType, ind: number, subInd: number, obj: unknown): Packet {
-    return this.publishSub(type, ind, subInd, "", JSON.stringify(obj));
-  }
-
-  /** Forward a raw tool packet under a sub-turn (ToolContext.emit path). */
-  sendRawSub(type: string, ind: number, subInd: number, message: string): Packet {
-    return this.publishSub(type as PacketType, ind, subInd, message, "");
-  }
-
-  /**
    * Emit a structured packet: the payload object is JSON-serialized into the
    * `packet` field (port of the classic `Packet(packet=obj.model_dump_json())`).
    */
@@ -123,33 +110,6 @@ export class StreamEmitter {
       }
     }
     void this.modelIdx; // retained for parity with emitter.py's model_idx tagging
-    return packet;
-  }
-
-  private publishSub(
-    type: PacketType,
-    ind: number,
-    subInd: number,
-    message: string,
-    packetJson: string,
-  ): Packet {
-    this.seq += 1;
-    const packet: Packet = {
-      seq: this.seq,
-      packet: packetJson,
-      ind,
-      subInd,
-      type,
-      message,
-    };
-    this.packets.push(packet);
-    if (this.subscriber) {
-      try {
-        this.subscriber(packet);
-      } catch {
-        // A throwing subscriber must never break the emission loop.
-      }
-    }
     return packet;
   }
 

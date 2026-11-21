@@ -105,8 +105,6 @@ export interface ChatMessage {
   // (legacy array rows are still readable for backward compatibility).
   citations: Citation[] | Record<string, string> | null;
   error: string | null;
-  // "like" | "dislike" | null — chat_message.current_feedback (migration 0012)
-  current_feedback: string | null;
   created_at: Date;
 }
 

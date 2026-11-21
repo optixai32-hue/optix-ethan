@@ -68,7 +68,6 @@ type ChatMessageRow = {
   message_index: number;
   citations: Citation[] | null;
   error: string | null;
-  current_feedback: string | null;
   created_at: Date | string;
 };
 
@@ -94,8 +93,6 @@ function normalizeMessage(row: ChatMessageRow): ChatMessage {
     message_index: row.message_index,
     citations: row.citations,
     error: row.error,
-    // "like" | "dislike" | null (chat_message.current_feedback, migration 0012)
-    current_feedback: row.current_feedback ?? null,
     created_at: new Date(row.created_at),
   };
 }
@@ -228,7 +225,7 @@ export async function appendChatMessage(
      )
      INSERT INTO chat_message (chat_session_id, message, role, message_index, created_at)
      SELECT $1, $2, $3, idx.next_index, now() FROM idx
-     RETURNING id, chat_session_id, message, role, message_index, citations, error, current_feedback, created_at`,
+     RETURNING id, chat_session_id, message, role, message_index, citations, error, created_at`,
     [chatSessionId, message, role],
   );
   if (!row) {
@@ -240,28 +237,20 @@ export async function appendChatMessage(
   return normalizeMessage(row);
 }
 
-/** Attach citations / error / feedback to a saved message (port of update_chat_message). */
+/** Attach citations / error to a saved message (port of update_chat_message). */
 export async function updateChatMessage(
   messageId: number,
-  patch: {
-    citations?: Citation[] | Record<string, string>;
-    error?: string;
-    current_feedback?: "like" | "dislike" | null;
-  },
+  patch: { citations?: Citation[] | Record<string, string>; error?: string },
 ): Promise<void> {
-  const feedback = "current_feedback" in patch ? patch.current_feedback : undefined;
   await query(
     `UPDATE chat_message SET
        citations = COALESCE($2::jsonb, citations),
-       error = COALESCE($3, error),
-       current_feedback = CASE WHEN $4::boolean THEN $5::text ELSE current_feedback END
+       error = COALESCE($3, error)
      WHERE id = $1`,
     [
       messageId,
       patch.citations !== undefined ? JSON.stringify(patch.citations) : null,
       patch.error ?? null,
-      feedback !== undefined,
-      feedback ?? null,
     ],
   );
 }
@@ -269,7 +258,7 @@ export async function updateChatMessage(
 /** Messages of a session in conversation order. */
 export async function getChatMessages(chatSessionId: string): Promise<ChatMessage[]> {
   const res = await query<ChatMessageRow>(
-    `SELECT id, chat_session_id, message, role, message_index, citations, error, current_feedback, created_at
+    `SELECT id, chat_session_id, message, role, message_index, citations, error, created_at
      FROM chat_message
      WHERE chat_session_id = $1
      ORDER BY message_index ASC`,

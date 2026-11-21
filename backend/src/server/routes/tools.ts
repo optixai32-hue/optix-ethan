@@ -16,8 +16,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { getLogger } from "../../utils/logger";
 import { InvalidRequestError, NotFoundError } from "../../utils/errors";
-import { getTool } from "../../tools/registry";
-import { buildToolSnapshots } from "../../tools/snapshot";
+import { getTool, listTools } from "../../tools/registry";
 import { registerBuiltInTools } from "../../tools/built_in_tools";
 import type { ToolContext } from "../../tools/interface";
 import { getAuthContext } from "./chat";
@@ -41,7 +40,24 @@ toolsRoutes.get("/", async (c) => {
   } catch {
     return c.json({ detail: "Unauthorized" }, 401);
   }
-  const tools = buildToolSnapshots();
+  const tools = listTools().map((t, index) => ({
+    id: index + 1,
+    name: t.name,
+    description: t.description,
+    definition: t.inputSchema as Record<string, unknown> | null,
+    display_name: t.displayName ?? t.name,
+    in_code_tool_id: t.name,
+    custom_headers: null,
+    passthrough_auth: false,
+    mcp_server_id: null,
+    user_id: null,
+    oauth_config_id: null,
+    oauth_config_name: null,
+    enabled: true,
+    user_enabled_in_chat: true,
+    default_chat_enabled: true,
+    permissions: {},
+  }));
   return c.json(tools);
 });
 
