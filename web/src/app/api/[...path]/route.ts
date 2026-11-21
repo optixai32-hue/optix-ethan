@@ -17,6 +17,8 @@ import { NextRequest, NextResponse } from "next/server";
  *     function instance.
  */
 
+console.log("[DIAG] route module evaluated, IS_VERCEL_RUNTIME next");
+
 const IS_VERCEL_RUNTIME = Boolean(
   process.env.VERCEL_URL || process.env.VERCEL === "1"
 );
@@ -297,6 +299,7 @@ async function proxyToBackend(
 }
 
 async function handleRequest(request: NextRequest, path: string[]) {
+  console.log("[DIAG] handleRequest hit:", request.method, path.join("/"));
   if (IS_VERCEL_RUNTIME) {
     // Single deployment: the backend lives inside this function.
     return dispatchInProcess(request, path);
