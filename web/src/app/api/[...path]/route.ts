@@ -305,9 +305,9 @@ async function handleRequest(request: NextRequest, path: string[]) {
     console.log("[DIAG] probe returning", probe.status);
     return probe;
   }
-  if (IS_VERCEL_RUNTIME) {
-    // Single deployment: the backend lives inside this function.
-    return dispatchInProcess(request, path);
-  }
-  return proxyToBackend(request, path);
+  const result = IS_VERCEL_RUNTIME
+    ? await dispatchInProcess(request, path)
+    : await proxyToBackend(request, path);
+  console.log("[DIAG] response status:", result.status, path.join("/"));
+  return result;
 }
