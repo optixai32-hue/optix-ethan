@@ -150,7 +150,14 @@ export async function proxy(request: NextRequest) {
 
   // Enterprise Edition: Rewrite EE-specific routes to /ee prefix. The /ee
   // layout turns away a deployment whose license does not cover them.
-  if (EE_ROUTES.some((route) => pathname.startsWith(route))) {
+  // Match exact segment boundaries — a startsWith check would also catch
+  // longer routes that merely share a prefix (e.g. /admin/groups2 would be
+  // rewritten to /ee/admin/groups2, which does not exist -> 404).
+  if (
+    EE_ROUTES.some(
+      (route) => pathname === route || pathname.startsWith(route + "/")
+    )
+  ) {
     const newUrl = new URL(`/ee${pathname}`, request.url);
     return withSecurityHeaders(
       NextResponse.rewrite(newUrl, { request: { headers: requestHeaders } })
