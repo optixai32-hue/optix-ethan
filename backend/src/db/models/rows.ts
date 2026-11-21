@@ -273,6 +273,7 @@ export function rowToChatMessage(row: Row): ChatMessage {
     message_index: reqNum(row, "message_index"),
     citations: narrowCitations(row["citations"]),
     error: optStr(row, "error"),
+    current_feedback: optStr(row, "current_feedback"),
     created_at: reqDate(row, "created_at"),
   };
 }

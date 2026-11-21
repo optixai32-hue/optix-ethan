@@ -39,11 +39,12 @@ import {
   LLMGenerationError,
   OnyxError,
 } from "../utils/errors";
-import { getLLMProvider } from "../llm/factory";
+import { getLLMProvider, resolveDefaultProvider } from "../llm/factory";
 import type { LLMMessage, LLMToolSpec } from "../llm/types";
 import { StreamEmitter } from "./emitter";
 import { StreamBuffer } from "./stream_buffer";
 import type { Packet } from "./models";
+import type { Tool, ToolContext } from "../tools/interface";
 import {
   appendChatMessage,
   getChatMessages,
@@ -60,6 +61,7 @@ import {
 import type { CitationInfoEvent } from "../rag/citations";
 import { getTool, listTools } from "../tools/registry";
 import { registerBuiltInTools } from "../tools/built_in_tools";
+import { queryOne } from "../db/client";
 
 const logger = getLogger("chat.process_message");
 
@@ -83,6 +85,23 @@ export interface ProcessMessageOptions {
    * (newline-delimited AnswerStreamPart, the original /chat/send-chat-message
    * wire format consumed by the original frontend). */
   wireFormat?: "sse" | "ndjson";
+  /** SendMessageRequest.deep_research — run the multi-step research loop
+   * (dr_loop.py port) before the final answer. */
+  deepResearch?: boolean;
+  /** SendMessageRequest.forced_tool_id — numeric ToolSnapshot id the user
+   * pinned; the tool runs on the user message before the agent loop. */
+  forcedToolId?: number;
+  /** SendMessageRequest.allowed_tool_ids — numeric ToolSnapshot ids of the
+   * enabled tools; when present only those tools are offered to the model. */
+  allowedToolIds?: number[];
+  /** SendMessageRequest.llm_override — per-message model/temperature choice
+   * from the toolbar model selector. */
+  llmOverride?: {
+    temperature?: number | null;
+    model_provider?: string | null;
+    model_version?: string | null;
+    model_configuration_id?: number | null;
+  };
 }
 
 function sseFrame(packet: Packet): string {
@@ -99,7 +118,7 @@ function ndjsonFrame(packet: Packet): string {
   const placement = {
     turn_index: packet.ind ?? 0,
     tab_index: 0,
-    sub_turn_index: null,
+    sub_turn_index: packet.subInd ?? null,
     model_index: 0,
   };
   let obj: Record<string, unknown> | null = null;
@@ -237,6 +256,136 @@ function parseToolArguments(raw: string): Record<string, unknown> {
 }
 
 /**
+ * Resolve the provider + model for this turn (process_message.py
+ * _select_models + get_llm_for_persona overrides):
+ *   1. Per-message llm_override.model_configuration_id -> the configured row.
+ *   2. Per-message llm_override.model_version (+ optional model_provider).
+ *   3. Persona-level llm_model_version_override.
+ *   4. The DB-backed default provider/model.
+ * Returns the provider plus the display model name for message attribution.
+ */
+async function resolveTurnModel(
+  persona: Persona,
+  override: ProcessMessageOptions["llmOverride"],
+): Promise<{ provider: Awaited<ReturnType<typeof getLLMProvider>>; modelName: string }> {
+  const personaOverride = persona.llm_model_version_override || undefined;
+
+  if (override?.model_configuration_id) {
+    const row = await queryOne<{
+      name: string;
+      provider: string;
+      llm_provider_default: string | null;
+    }>(
+      `SELECT mc.name, lp.provider, lp.default_model_name AS llm_provider_default
+       FROM model_configuration mc
+       JOIN llm_provider lp ON lp.id = mc.llm_provider_id
+       WHERE mc.id = $1`,
+      [override.model_configuration_id],
+    );
+    if (row) {
+      return {
+        provider: await getLLMProvider(row.provider, row.name),
+        modelName: row.name,
+      };
+    }
+  }
+
+  if (override?.model_version && override.model_version !== "default") {
+    return {
+      provider: await getLLMProvider(
+        override.model_provider ?? undefined,
+        override.model_version,
+      ),
+      modelName: override.model_version,
+    };
+  }
+
+  if (personaOverride) {
+    return {
+      provider: await getLLMProvider(undefined, personaOverride),
+      modelName: personaOverride,
+    };
+  }
+
+  const def = await resolveDefaultProvider();
+  return {
+    provider: await getLLMProvider(def.providerId, def.modelName),
+    modelName: def.modelName,
+  };
+}
+
+/**
+ * Run one tool directly and return its text result (shared by forced_tool_id
+ * pre-runs and Deep Research sub-agent searches). Gathered SearchDocs merge
+ * into the citation mapping; tool progress packets land under (turn, subTurn)
+ * so the frontend nests them inside the Deep Research timeline. The result is
+ * fed back to the model as a user-role context message — a bare tool message
+ * would be invalid without a preceding assistant tool_calls turn.
+ */
+async function runToolDirect(
+  tool: Tool,
+  args: Record<string, unknown>,
+  opts: {
+    userId: string;
+    chatSessionId: string;
+    turn: number;
+    subTurn?: number;
+    emitter: StreamEmitter;
+    gatheredDocs: SearchDoc[];
+    citationMapping: Map<number, SearchDoc>;
+    toolCallId?: string;
+  },
+): Promise<string> {
+  const toolCallId = opts.toolCallId ?? `${tool.name}-${opts.turn}`;
+  const emitPacket = (
+    packetType: string,
+    message: string,
+  ): void => {
+    if (opts.subTurn !== undefined) {
+      opts.emitter.sendRawSub(packetType, opts.turn, opts.subTurn, message);
+    } else {
+      opts.emitter.sendRaw(packetType, opts.turn, message);
+    }
+  };
+  const toolContext: ToolContext = {
+    userId: opts.userId,
+    chatSessionId: opts.chatSessionId,
+    emit: (packetType, message) => {
+      if (packetType === "search_tool_documents_delta") {
+        try {
+          const parsed: unknown = JSON.parse(message);
+          if (
+            parsed &&
+            typeof parsed === "object" &&
+            Array.isArray((parsed as { documents?: unknown }).documents)
+          ) {
+            mergeGatheredDocs(
+              opts.gatheredDocs,
+              opts.citationMapping,
+              (parsed as { documents: SearchDoc[] }).documents,
+            );
+          }
+        } catch {
+          // ignore malformed doc payloads
+        }
+      }
+      emitPacket(packetType, message);
+    },
+  };
+
+  try {
+    const result = await tool.run(args, toolContext);
+    return result.content;
+  } catch (err) {
+    logger.warning("direct tool execution failed", {
+      tool: tool.name,
+      error: String(err),
+    });
+    return `Error: tool "${tool.name}" failed: ${String(err)}`;
+  }
+}
+
+/**
  * SearchDoc -> SavedSearchDoc (context/search/models.py:456): the wire shape
  * the original frontend expects in context_docs / final_documents.
  */
@@ -336,11 +485,23 @@ export async function processMessage(
             );
           }
 
-          const provider = await getLLMProvider(
-            undefined,
-            persona.llm_model_version_override ?? undefined,
-          );
-          const tools = listTools();
+          // ---- Model selection (process_message.py _select_models): per-message
+          // llm_override first, then persona override, then the DB default.
+          const { provider, modelName: resolvedModelName } =
+            await resolveTurnModel(persona, opts.llmOverride);
+
+          // Tool offering: when the user enabled a specific subset via the
+          // ToolsPopover, allowed_tool_ids carries the numeric ToolSnapshot
+          // ids (buildToolSnapshots order = registry order) to offer.
+          const allTools = listTools();
+          let tools = allTools;
+          if (opts.allowedToolIds && opts.allowedToolIds.length > 0) {
+            const allowed = new Set(opts.allowedToolIds);
+            const byIndex = allTools.filter(
+              (_t, index) => allowed.has(index + 1) || allowed.has(index),
+            );
+            if (byIndex.length > 0) tools = byIndex;
+          }
           const toolSpecs: LLMToolSpec[] = tools.map((t) => ({
             name: t.name,
             description: t.description,
@@ -389,6 +550,171 @@ export async function processMessage(
               emitter.sendRaw(packetType, turn, message);
             },
           });
+
+          // ---- Forced tool (SendMessageRequest.forced_tool_id): run the
+          // pinned tool on the user message before the agent loop and feed
+          // its result back as a user-role context message (upstream
+          // injects forced tool output into the prompt context the same way).
+          if (opts.forcedToolId) {
+            const forcedTool =
+              allTools.find((_t, index) => index + 1 === opts.forcedToolId) ??
+              getTool(String(opts.forcedToolId));
+            if (forcedTool) {
+              emitter.sendObject("tool_call_debug", 0, {
+                tool_call_id: `forced-${forcedTool.name}`,
+                tool_name: forcedTool.name,
+                tool_args: { query: opts.message },
+              });
+              const forcedResult = await runToolDirect(forcedTool, { query: opts.message }, {
+                userId: opts.user.user.id,
+                chatSessionId: session.id,
+                turn: 0,
+                emitter,
+                gatheredDocs,
+                citationMapping,
+              });
+              inMemory.push({
+                role: "user",
+                content:
+                  `[Tool ${forcedTool.displayName} was run on the user's message. ` +
+                  `Use its result when answering.]\n${forcedResult}`,
+              });
+            }
+          }
+
+          // ---- Deep Research (dr_loop.py port): plan -> research agents
+          // (search + intermediate report per sub-question) -> final answer
+          // through the normal agent loop below. Packet vocabulary matches
+          // streaming_models.py: deep_research_plan_* at turn 0, each
+          // research agent at its own turn with nested search tool calls on
+          // sub-turns, then agent_response_* for the final answer.
+          const deepResearchContext: string[] = [];
+          // The final answer streams at the first turn AFTER the research
+          // turns — emitting it at turn 0 would collide with the plan packets
+          // and the frontend would never open the answer's display group.
+          let answerTurnBase = 0;
+          if (opts.deepResearch) {
+            const runPlain = async (
+              messages: LLMMessage[],
+            ): Promise<StreamBuffer> => {
+              const buffer = new StreamBuffer();
+              for await (const event of provider.stream(messages, {
+                signal: runAbort.signal,
+              })) {
+                if (event.delta) buffer.processToken(event.delta);
+                if (event.done) break;
+                if (
+                  event.finish_reason === "stop" ||
+                  event.finish_reason === "length"
+                ) {
+                  break;
+                }
+              }
+              return buffer;
+            };
+
+            // Phase 1 — plan (turn 0).
+            emitter.sendObject("deep_research_plan_start", 0, {});
+            const planBuffer = await runPlain([
+              {
+                role: "user",
+                content:
+                  `You are the Deep Research planner. Break the user's research request ` +
+                  `into 2 to 4 focused, self-contained research questions (one per line, ` +
+                  `no numbering, no extra prose) that together fully cover it. Request: ${opts.message}`,
+              },
+            ]);
+            for (const delta of planBuffer.getDeltas()) {
+              emitter.sendObject("deep_research_plan_delta", 0, {
+                content: delta,
+              });
+            }
+            emitter.sendObject("section_end", 0, {});
+            const subQuestions = planBuffer
+              .fullResponse()
+              .split("\n")
+              .map((line) => line.replace(/^[\s\-*>\d.]+/, "").trim())
+              .filter((line) => line.length > 3)
+              .slice(0, 4);
+            if (subQuestions.length === 0) subQuestions.push(opts.message);
+
+            // Phase 2 — research agents (one turn each).
+            const webSearchToolDef =
+              getTool("web_search") ?? tools.find((t) => t.name === "web_search");
+            const internalSearchToolDef =
+              getTool("search_internal") ??
+              tools.find((t) => t.name === "search_internal");
+
+            for (let q = 0; q < subQuestions.length; q += 1) {
+              if (runAbort.signal.aborted) break;
+              const turn = q + 1;
+              const subQuestion = subQuestions[q];
+              emitter.sendObject("research_agent_start", turn, {
+                research_task: subQuestion,
+              });
+
+              // Nested search calls on sub-turns (ResearchAgentRenderer groups
+              // them by sub_turn_index).
+              const searchFindings: string[] = [];
+              let subTurn = 0;
+              for (const searchToolDef of [internalSearchToolDef, webSearchToolDef]) {
+                if (!searchToolDef || runAbort.signal.aborted) continue;
+                const result = await runToolDirect(searchToolDef, { query: subQuestion }, {
+                  userId: opts.user.user.id,
+                  chatSessionId: session.id,
+                  turn,
+                  subTurn,
+                  emitter,
+                  gatheredDocs,
+                  citationMapping,
+                  toolCallId: `dr-${q}-${searchToolDef.name}`,
+                });
+                searchFindings.push(result);
+                emitter.sendObjectSub("section_end", turn, subTurn, {});
+                subTurn += 1;
+              }
+
+              // Intermediate report (parent packets of this turn).
+              emitter.sendObject("intermediate_report_start", turn, {});
+              const reportBuffer = await runPlain([
+                {
+                  role: "user",
+                  content:
+                    `You are a research sub-agent. Using ONLY the search findings below, ` +
+                    `write a concise research summary (a few sentences to a short paragraph, ` +
+                    `cite sources as [n] where the findings number them) for the task: "${subQuestion}"` +
+                    `\n\nFindings:\n${searchFindings.join("\n\n") || "(no results found)"}`,
+                },
+              ]);
+              for (const delta of reportBuffer.getDeltas()) {
+                emitter.sendObject("intermediate_report_delta", turn, {
+                  content: delta,
+                });
+              }
+              const reportText = reportBuffer.fullResponse();
+              deepResearchContext.push(
+                `Research task: ${subQuestion}\nSummary: ${reportText}`,
+              );
+              emitter.sendObject("intermediate_report_cited_docs", turn, {
+                cited_docs: gatheredDocs.map(toSavedSearchDoc),
+              });
+              emitter.sendObject("section_end", turn, {});
+            }
+
+            // The final answer starts at the next free turn.
+            answerTurnBase = subQuestions.length + 1;
+
+            // Feed the research summary into the final answer as context.
+            if (deepResearchContext.length > 0) {
+              inMemory.push({
+                role: "user",
+                content:
+                  `[Deep Research findings — use these (and their [n] citations) to write ` +
+                  `the final answer to the user's original request.]\n` +
+                  deepResearchContext.join("\n\n"),
+              });
+            }
+          }
 
           // NOTE (upstream fidelity — llm_loop.py:929-945): there is NO forced
           // retrieval step before the agent loop. Onyx offers the Search tool
@@ -450,8 +776,9 @@ export async function processMessage(
             // Placement turn for this LLM cycle (llm_loop.py:1125 —
             // turn_index = llm_cycle_count; cycle 0 is the first LLM step, so
             // agent-loop step N runs at turn N; tools called from this step
-            // share its turn).
-            const cycleTurn = step;
+            // share its turn). In Deep Research mode the research agents own
+            // turns 0..N, so the answer starts at N+1.
+            const cycleTurn = answerTurnBase + step;
 
             if (toolCalls.length > 0 && offerTools) {
               inMemory.push({
@@ -549,20 +876,22 @@ export async function processMessage(
             await updateChatMessage(saved.id, { citations: citationsMap });
 
             // Final line: bare ChatMessageDetail (server/query_and_chat/models.py)
-            // — the frontend keys its tree/URL/citation state on it.
+            // — the frontend keys its tree/URL/citation state on it. The model
+            // fields carry the RESOLVED model so the toolbar's per-message
+            // model chip/selector works like cloud.
             push(
               JSON.stringify({
                 chat_session_id: session.id,
                 message_id: saved.id,
                 message_type: "assistant",
-                research_type: null,
+                research_type: opts.deepResearch ? "deep_research" : null,
                 parent_message: userMessage.id,
                 latest_child_message: null,
                 message: answerText,
                 rephrased_query: null,
                 context_docs: gatheredDocs.map(toSavedSearchDoc),
                 time_sent: new Date().toISOString(),
-                overridden_model: persona.llm_model_version_override ?? "",
+                overridden_model: resolvedModelName ?? "",
                 alternate_assistant_id: null,
                 citations: citationsMap,
                 files: [],
@@ -574,9 +903,9 @@ export async function processMessage(
                 comments: null,
                 parentMessageId: null,
                 refined_answer_improvement: null,
-                is_agentic: gatheredDocs.length > 0,
+                is_agentic: gatheredDocs.length > 0 || Boolean(opts.deepResearch),
                 preferred_response_id: null,
-                model_display_name: persona.llm_model_version_override ?? "",
+                model_display_name: resolvedModelName ?? "",
                 error: null,
               }) + "\n",
             );

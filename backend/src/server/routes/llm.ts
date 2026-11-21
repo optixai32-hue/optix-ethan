@@ -24,6 +24,7 @@ import { query, queryOne } from "../../db/client";
 import { getAuth, requireAuth, requireAdmin } from "../../auth/middleware";
 import { InvalidRequestError, NotFoundError } from "../../utils/errors";
 import { getLogger } from "../../utils/logger";
+import { OPENAI_API_BASE, OPENAI_API_KEY, OPENAI_MODEL } from "../../configs/constants";
 
 const logger = getLogger("routes.llm");
 
@@ -368,11 +369,68 @@ function buildResponse(
 // User-facing surface (GET /llm/provider -> LLMProviderDescriptor)
 // ---------------------------------------------------------------------------
 
+/**
+ * Idempotent seed: ensure the OpenAI-compatible gateway (Kilo) exposes its
+ * models as a visible provider + model_configuration rows so the chat model
+ * selector lists them. Env-driven: runs on both local and serverless
+ * deployments; a no-op when no gateway credentials are configured.
+ * Also guarantees the default provider's own default model is a visible
+ * model_configuration row (fresh deployments otherwise list nothing).
+ */
+const KILO_REQUESTED_MODELS = ["nvidia/nemotron-3-ultra-550b-a55b:free"];
+let kiloSeedAttempted = false;
+async function ensureKiloGatewayModels(): Promise<void> {
+  if (kiloSeedAttempted) return;
+  kiloSeedAttempted = true;
+  if (!OPENAI_API_BASE || !OPENAI_API_KEY) return;
+  try {
+    // Provider row for the gateway (Kilo) — one per deployment.
+    let providerRow = await queryOne<{ id: number }>(
+      "SELECT id FROM llm_provider WHERE provider = 'openai-compatible' ORDER BY id LIMIT 1",
+    );
+    if (!providerRow) {
+      providerRow = await queryOne<{ id: number }>(
+        `INSERT INTO llm_provider
+           (name, provider, api_key, api_base, default_model_name, is_default)
+         VALUES ('Kilo Gateway', 'openai-compatible', $1, $2, $3, false)
+         RETURNING id`,
+        [OPENAI_API_KEY, OPENAI_API_BASE, OPENAI_MODEL || KILO_REQUESTED_MODELS[0]],
+      );
+    }
+    if (!providerRow) return;
+
+    // Visible model rows: the gateway's default model + every requested
+    // model (the user-requested Kilo additions). ON CONFLICT-free: checked
+    // per (provider, name) to stay idempotent.
+    const modelNames = new Set<string>(KILO_REQUESTED_MODELS);
+    if (OPENAI_MODEL && OPENAI_MODEL !== "default") {
+      modelNames.add(OPENAI_MODEL);
+    }
+    for (const name of modelNames) {
+      const existing = await queryOne<{ id: number }>(
+        "SELECT id FROM model_configuration WHERE llm_provider_id = $1 AND name = $2",
+        [providerRow.id, name],
+      );
+      if (existing) continue;
+      await query(
+        `INSERT INTO model_configuration
+           (llm_provider_id, name, is_visible, supports_chat, supports_image_input,
+            supports_reasoning, max_input_tokens)
+         VALUES ($1, $2, true, true, true, false, null)`,
+        [providerRow.id, name],
+      );
+    }
+  } catch (err) {
+    logger.warning("kilo gateway model seed failed", { error: String(err) });
+  }
+}
+
 llmRoutes.get("/llm/provider", requireAuth, async (c) => {
   const auth = getAuth(c);
   if (!auth) {
     return c.json({ detail: "Unauthorized" }, 401);
   }
+  await ensureKiloGatewayModels();
   const rows = await fetchProviderRows();
   const configs = await fetchModelConfigRows();
   // LLMProviderDescriptor (models.py:116) — same view minus credentials.

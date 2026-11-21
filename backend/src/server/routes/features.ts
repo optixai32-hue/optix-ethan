@@ -21,8 +21,18 @@
  *   - GET /chat/incognito-availability -> bool
  */
 import { Hono } from "hono";
+import { z } from "zod";
 import { query } from "../../db/client";
 import { requireAuth } from "../../auth/middleware";
+import {
+  OPENAI_API_BASE,
+  OPENAI_API_KEY,
+} from "../../configs/constants";
+
+/** TTS gateway model + default voice (ONYX_TTS_MODEL env override). */
+const TTS_MODEL =
+  process.env.ONYX_TTS_MODEL?.trim() || "openai/gpt-4o-mini-tts";
+const TTS_DEFAULT_VOICE = process.env.ONYX_TTS_VOICE?.trim() || "alloy";
 
 export const featuresRoutes = new Hono();
 
@@ -142,13 +152,88 @@ featuresRoutes.get("/enterprise-settings", requireAuth, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// Voice status (server/manage/voice/user_api.py get_voice_status)
+// Voice (server/manage/voice/user_api.py + voice synthesis). TTS goes through
+// the OpenAI-compatible gateway (/audio/speech) when configured — the same
+// Kilo gateway that serves chat, so the toolbar read-aloud button matches
+// cloud behavior. Without gateway credentials the status stays disabled.
 // ---------------------------------------------------------------------------
 
 featuresRoutes.get("/voice/status", requireAuth, async (c) => {
-  // VoiceStatusResponse — no STT/TTS providers configured in this port.
-  return c.json({ stt_enabled: false, tts_enabled: false });
+  const ttsEnabled = Boolean(OPENAI_API_BASE && OPENAI_API_KEY);
+  return c.json({
+    stt_enabled: false,
+    tts_enabled: ttsEnabled,
+    tts_model: TTS_MODEL,
+    default_voice: TTS_DEFAULT_VOICE,
+  });
 });
+
+const synthesizeSchema = z.object({
+  text: z.string().min(1),
+  voice: z.string().optional(),
+  speed: z.number().optional(),
+});
+
+/** Shared synthesis proxy: POST {text, voice?, speed?} -> audio/mpeg stream. */
+async function synthesizeSpeech(c: any): Promise<Response> {
+  if (!OPENAI_API_BASE || !OPENAI_API_KEY) {
+    return c.json(
+      { detail: "No TTS provider configured (set KILO_GATEWAY_* / ONYX_OPENAI_*)" },
+      501,
+    );
+  }
+  let body: z.infer<typeof synthesizeSchema>;
+  try {
+    body = synthesizeSchema.parse(await c.req.json());
+  } catch (err) {
+    return c.json(
+      { detail: `Invalid synthesize request: ${err instanceof Error ? err.message : String(err)}` },
+      400,
+    );
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120_000);
+  try {
+    const upstream = await fetch(`${OPENAI_API_BASE.replace(/\/$/, "")}/audio/speech`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: TTS_MODEL,
+        input: body.text.slice(0, 8000),
+        voice: body.voice || TTS_DEFAULT_VOICE,
+        ...(body.speed && body.speed > 0 ? { speed: body.speed } : {}),
+        response_format: "mp3",
+      }),
+      signal: controller.signal,
+    });
+    if (!upstream.ok || !upstream.body) {
+      const detail = await upstream.text().catch(() => "");
+      return c.json(
+        { detail: `TTS provider error (${upstream.status}): ${detail.slice(0, 200)}` },
+        502,
+      );
+    }
+    return new Response(upstream.body, {
+      status: 200,
+      headers: {
+        "Content-Type": "audio/mpeg",
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+      },
+    });
+  } catch (err) {
+    return c.json({ detail: `TTS synthesis failed: ${String(err)}` }, 502);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+featuresRoutes.post("/voice/synthesize", requireAuth, (c) => synthesizeSpeech(c));
+// The streaming variant used by voice mode — same non-chunked gateway call.
+featuresRoutes.post("/voice/synthesize/stream", requireAuth, (c) => synthesizeSpeech(c));
 
 // ---------------------------------------------------------------------------
 // Federated connectors + oauth token status

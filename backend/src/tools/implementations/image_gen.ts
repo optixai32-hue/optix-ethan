@@ -54,6 +54,8 @@ export const imageGenTool: Tool = {
   id: IMAGE_GEN_TOOL_ID,
   name: IMAGE_GEN_TOOL_ID,
   displayName: "Image Generation",
+  /** Upstream in-code id (onyx/tools/constants.py IMAGE_GENERATION_TOOL_ID). */
+  inCodeToolId: "ImageGenerationTool",
   description: IMAGE_GEN_DESCRIPTION,
   inputSchema: {
     type: "object",

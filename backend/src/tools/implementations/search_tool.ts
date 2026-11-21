@@ -67,6 +67,9 @@ export const searchTool: Tool = {
   id: SEARCH_TOOL_ID,
   name: SEARCH_TOOL_ID,
   displayName: "Internal Search",
+  /** Upstream in-code id (onyx/tools/constants.py SEARCH_TOOL_ID) — the
+   * frontend keys tool gating (Deep Research toggle, ToolsPopover) on this. */
+  inCodeToolId: "SearchTool",
   description: SEARCH_TOOL_DESCRIPTION,
   inputSchema: {
     type: "object",

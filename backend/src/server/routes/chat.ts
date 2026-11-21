@@ -34,6 +34,7 @@ import {
   ForbiddenError,
   InvalidMessageExceptionError,
   InvalidRequestError,
+  NotFoundError,
   UnauthorizedError,
   UnsupportedFeatureError,
 } from "../../utils/errors";
@@ -46,6 +47,7 @@ import {
   getChatSession,
   getFallbackChatSessionName,
   listChatSessions,
+  updateChatMessage,
 } from "../../chat/persistence";
 import { getDefaultPersona, getPersona } from "../../agents/personas";
 import { registerBuiltInTools } from "../../tools/built_in_tools";
@@ -478,9 +480,10 @@ chatRoutes.get("/get-chat-session/:id", async (c) => {
     role: string;
     citations: unknown;
     error: string | null;
+    current_feedback: string | null;
     created_at: Date | string;
   }>(
-    `SELECT id, message, role, citations, error, created_at
+    `SELECT id, message, role, citations, error, current_feedback, created_at
      FROM chat_message WHERE chat_session_id = $1
      ORDER BY message_index ASC, id ASC LIMIT $2`,
     [sessionId, limit],
@@ -504,7 +507,7 @@ chatRoutes.get("/get-chat-session/:id", async (c) => {
     error: row.error,
     error_info: null,
     response_status: row.error ? "FAILED" : "SUCCESS",
-    current_feedback: null,
+    current_feedback: (row.current_feedback as "like" | "dislike" | null) ?? null,
   }));
 
   // Historical packet replay — port of translate_assistant_message_to_packets
@@ -687,6 +690,21 @@ chatRoutes.post("/send-chat-message", async (c) => {
     chat_session_info?: Record<string, unknown> | null;
     stream?: boolean;
     persona_id?: number | null;
+    deep_research?: boolean | null;
+    forced_tool_id?: number | null;
+    allowed_tool_ids?: number[] | null;
+    llm_override?: {
+      temperature?: number | null;
+      model_provider?: string | null;
+      model_version?: string | null;
+      model_configuration_id?: number | null;
+    } | null;
+    llm_overrides?: Array<{
+      temperature?: number | null;
+      model_provider?: string | null;
+      model_version?: string | null;
+      model_configuration_id?: number | null;
+    }> | null;
   };
   try {
     body = z
@@ -697,6 +715,30 @@ chatRoutes.post("/send-chat-message", async (c) => {
         chat_session_info: z.record(z.string(), z.unknown()).nullish(),
         stream: z.boolean().optional(),
         persona_id: z.number().int().nullish(),
+        // SendMessageRequest extras (server/query_and_chat/models.py) the
+        // frontend always sends — previously stripped here, which silently
+        // disabled Deep Research and per-message model selection.
+        deep_research: z.boolean().nullish(),
+        forced_tool_id: z.number().int().nullish(),
+        allowed_tool_ids: z.array(z.number().int()).nullish(),
+        llm_override: z
+          .object({
+            temperature: z.number().nullish(),
+            model_provider: z.string().nullish(),
+            model_version: z.string().nullish(),
+            model_configuration_id: z.number().int().nullish(),
+          })
+          .nullish(),
+        llm_overrides: z
+          .array(
+            z.object({
+              temperature: z.number().nullish(),
+              model_provider: z.string().nullish(),
+              model_version: z.string().nullish(),
+              model_configuration_id: z.number().int().nullish(),
+            }),
+          )
+          .nullish(),
       })
       .parse(await c.req.json());
   } catch (err) {
@@ -726,6 +768,10 @@ chatRoutes.post("/send-chat-message", async (c) => {
     chatSessionId,
     message: body.message,
     personaId: body.persona_id ?? undefined,
+    deepResearch: body.deep_research ?? false,
+    forcedToolId: body.forced_tool_id ?? undefined,
+    allowedToolIds: body.allowed_tool_ids ?? undefined,
+    llmOverride: body.llm_override ?? undefined,
     signal: c.req.raw.signal,
     wireFormat: "ndjson",
   });
@@ -813,6 +859,66 @@ chatRoutes.post("/sessions/:id/stop", async (c) => {
   throw new UnsupportedFeatureError(
     "Session stop is not implemented in the TypeScript port (501)",
   );
+});
+
+// ---------------------------------------------------------------------------
+// Message feedback (chat_backend.py create_chat_message_feedback /
+// remove_chat_message_feedback). Persists "like"/"dislike" on the
+// chat_message row (current_feedback, migration 0012) so the toolbar thumbs
+// render state after reload — the same behavior as cloud.
+// ---------------------------------------------------------------------------
+
+const createFeedbackSchema = z.object({
+  chat_message_id: z.number().int(),
+  is_positive: z.boolean(),
+  feedback_text: z.string().nullish(),
+  predefined_feedback: z.string().nullish(),
+});
+
+chatRoutes.post("/create-chat-message-feedback", async (c) => {
+  const auth = await getAuthContext(c);
+  let body: z.infer<typeof createFeedbackSchema>;
+  try {
+    body = createFeedbackSchema.parse(await c.req.json());
+  } catch (err) {
+    throw new InvalidRequestError(
+      `Invalid feedback request: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  // Ownership check: the message must belong to one of the caller's sessions.
+  const owned = await queryOne<{ id: number }>(
+    `SELECT cm.id FROM chat_message cm
+     JOIN chat_session cs ON cs.id = cm.chat_session_id
+     WHERE cm.id = $1 AND cs.user_id = $2`,
+    [body.chat_message_id, auth.user.id],
+  );
+  if (!owned) {
+    throw new NotFoundError("Chat message");
+  }
+  await updateChatMessage(body.chat_message_id, {
+    current_feedback: body.is_positive ? "like" : "dislike",
+  });
+  return c.json({ success: true });
+});
+
+chatRoutes.delete("/remove-chat-message-feedback", async (c) => {
+  const auth = await getAuthContext(c);
+  const messageIdRaw = c.req.query("chat_message_id");
+  const messageId = messageIdRaw ? Number.parseInt(messageIdRaw, 10) : NaN;
+  if (Number.isNaN(messageId)) {
+    throw new InvalidRequestError("chat_message_id query parameter is required");
+  }
+  const owned = await queryOne<{ id: number }>(
+    `SELECT cm.id FROM chat_message cm
+     JOIN chat_session cs ON cs.id = cm.chat_session_id
+     WHERE cm.id = $1 AND cs.user_id = $2`,
+    [messageId, auth.user.id],
+  );
+  if (!owned) {
+    throw new NotFoundError("Chat message");
+  }
+  await updateChatMessage(messageId, { current_feedback: null });
+  return c.json({ success: true });
 });
 
 // Ownership enforcement helper retained for future session-mutation routes
