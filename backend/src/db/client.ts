@@ -28,11 +28,14 @@ export function getDb(): Pool {
     const dbSchema = DB_SCHEMA;
     // Serverless/shared deployments (Vercel + managed poolers like Supavisor
     // session mode) cap concurrent client sessions per project (e.g. 15).
-    // Every function instance carries its own pool, so keep it small there —
-    // each invocation runs a handful of sequential queries. Local/standalone
-    // keeps the roomier pool.
-    const poolMax = IS_SERVERLESS_SHARED_DB ? 3 : 10;
-    const idleTimeout = IS_SERVERLESS_SHARED_DB ? 10_000 : 30_000;
+    // EVERY request spawns its own function instance (each client /api call,
+    // each server-side self-fetch), and every instance owns its pool — so the
+    // only safe serverless size is 1 connection per instance (queries within
+    // one request chain run sequentially on it). Local/standalone keeps the
+    // roomier pool. Raise the Supabase dashboard "Session pool size" to scale
+    // concurrent instances.
+    const poolMax = IS_SERVERLESS_SHARED_DB ? 1 : 10;
+    const idleTimeout = IS_SERVERLESS_SHARED_DB ? 5_000 : 30_000;
     pool = new Pool({
       connectionString: uri,
       max: poolMax,
