@@ -26,18 +26,22 @@ export function getDb(): Pool {
     // poolers) isolates the onyx tables via the search_path startup
     // parameter (applies to every pooled connection).
     const dbSchema = DB_SCHEMA;
-    // Serverless/shared deployments (Vercel + managed poolers like Supavisor
-    // session mode) cap concurrent client sessions per project (e.g. 15).
-    // EVERY request spawns its own function instance (each client /api call,
-    // each server-side self-fetch), and every instance owns its pool — so the
-    // only safe serverless size is 1 connection per instance (queries within
-    // one request chain run sequentially on it). Local/standalone keeps the
-    // roomier pool. Raise the Supabase dashboard "Session pool size" to scale
-    // concurrent instances.
-    const poolMax = IS_SERVERLESS_SHARED_DB ? 1 : 10;
-    const idleTimeout = IS_SERVERLESS_SHARED_DB ? 5_000 : 30_000;
+    // Serverless/shared deployments: prefer the TRANSACTION pooler (:6543) —
+    // session mode caps project clients (15) and every request spawns its own
+    // function instance, exhausting that cap instantly (EMAXCONNSESSION).
+    // Transaction mode serves ~200 clients and (verified against Supavisor)
+    // forwards the `options` startup parameter, so the onyx search_path
+    // survives pooling. Local/standalone keeps the given URI and roomier pool.
+    let poolUri = uri;
+    let poolMax = 10;
+    let idleTimeout = 30_000;
+    if (IS_SERVERLESS_SHARED_DB && /pooler\.supabase\.com:\d+/.test(poolUri)) {
+      poolUri = poolUri.replace(/(pooler\.supabase\.com):5432/, "$1:6543");
+      poolMax = 5;
+      idleTimeout = 10_000;
+    }
     pool = new Pool({
-      connectionString: uri,
+      connectionString: poolUri,
       max: poolMax,
       idleTimeoutMillis: idleTimeout,
       connectionTimeoutMillis: 10_000,
