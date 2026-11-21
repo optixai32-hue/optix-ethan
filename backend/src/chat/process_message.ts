@@ -357,10 +357,10 @@ export async function processMessage(
           const rows = await getChatMessages(session.id);
           const inMemory: LLMMessage[] = [];
 
-          // Tool context factory — used by the in-loop tool executions below.
-          // `turn` is the llm_cycle_count of the original placement semantics
-          // (llm_loop.py: tool packets carry the turn of the LLM step that
-          // called them).
+          // Tool context factory — shared by the automatic retrieval step and
+          // the in-loop tool executions below. `turn` is the llm_cycle_count of
+          // the original placement semantics (llm_loop.py: tool packets carry
+          // the turn of the LLM step that called them).
           const makeToolContext = (turn: number) => ({
             userId: opts.user.user.id,
             chatSessionId: session.id,
@@ -390,14 +390,23 @@ export async function processMessage(
             },
           });
 
-          // NOTE (upstream fidelity — llm_loop.py:929-945): there is NO forced
-          // retrieval step before the agent loop. Onyx offers the Search tool
-          // to the model with tool_choice=AUTO and the model itself decides
-          // when to search. A forced pre-search made every single turn show
-          // "Searching internal documents" (even for greetings), burned one
-          // LLM cycle per turn, and failed on deployments without a vector DB.
-          // Search still happens — as a normal tool call inside the loop —
-          // whenever the model judges the question document-related.
+          // ---- Automatic retrieval step (port of process_message.py: the
+          // search tool runs on the user's message before generation, so the
+          // answer is always grounded in the user's indexed documents; the
+          // agent loop below keeps tools available for follow-up searches).
+          const searchTool = getTool("search_internal");
+          if (searchTool) {
+            try {
+              // Turn 0: the retrieval step occupies the first llm_cycle slot
+              // (llm_loop.py llm_cycle_count=0); the agent loop's LLM steps
+              // therefore start at turn 1.
+              await searchTool.run({ query: opts.message }, makeToolContext(0));
+            } catch (err) {
+              logger.warning("automatic retrieval failed", {
+                error: String(err),
+              });
+            }
+          }
 
           // ---- Agent loop (agent.py ChatAgent; escape hatches: max steps,
           // AbortSignal, wall-clock deadline)
@@ -448,10 +457,10 @@ export async function processMessage(
 
             const toolCalls = stepBuffer.getToolCalls().filter((c) => c.name);
             // Placement turn for this LLM cycle (llm_loop.py:1125 —
-            // turn_index = llm_cycle_count; cycle 0 is the first LLM step, so
-            // agent-loop step N runs at turn N; tools called from this step
-            // share its turn).
-            const cycleTurn = step;
+            // turn_index = llm_cycle_count + reasoning_cycles). The retrieval
+            // step consumed cycle 0, so agent-loop step N runs at turn N + 1;
+            // tools called from this step share its turn.
+            const cycleTurn = step + 1;
 
             if (toolCalls.length > 0 && offerTools) {
               inMemory.push({
