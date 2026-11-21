@@ -22,6 +22,7 @@ import type {
 } from "../types.js";
 import { LLMGenerationError } from "../../utils/errors.js";
 import { getLogger } from "../../utils/logger.js";
+import { OPENAI_API_BASE, OPENAI_API_KEY, OPENAI_MODEL } from "../../configs/constants.js";
 
 const logger = getLogger("llm.openai_compat");
 
@@ -88,13 +89,15 @@ export class OpenaiCompatProvider implements LLMProvider {
   private readonly apiKey: string | null;
 
   constructor(modelName?: string) {
-    this.apiBase = (process.env.ONYX_OPENAI_API_BASE ?? "").replace(/\/+$/, "");
-    this.apiKey = process.env.ONYX_OPENAI_API_KEY ?? null;
-    this.modelName = modelName ?? process.env.ONYX_OPENAI_MODEL ?? "default";
+    // Resolved config (ONYX_OPENAI_* with KILO gateway fallbacks for the
+    // single-deployment Vercel build) comes from configs/constants.ts.
+    this.apiBase = OPENAI_API_BASE.replace(/\/+$/, "");
+    this.apiKey = OPENAI_API_KEY;
+    this.modelName = modelName ?? OPENAI_MODEL;
     if (!this.apiBase) {
       // Constructed lazily; only fatal when actually invoked.
       logger.warning(
-        "ONYX_OPENAI_API_BASE is not set — openai-compatible provider will fail at call time",
+        "openai-compatible provider has no API base (ONYX_OPENAI_API_BASE/KILO_GATEWAY_BASE_URL unset) — will fail at call time",
       );
     }
   }

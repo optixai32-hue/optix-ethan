@@ -16,7 +16,7 @@
  */
 
 import type { LLMProvider } from "./types.js";
-import { DEFAULT_FAST_MODEL, DEFAULT_LLM_PROVIDER } from "../configs/constants.js";
+import { DEFAULT_FAST_MODEL, DEFAULT_LLM_PROVIDER, OPENAI_MODEL } from "../configs/constants.js";
 import { getLogger } from "../utils/logger.js";
 import { ZaiProvider } from "./providers/zai.js";
 import { OpenaiCompatProvider } from "./providers/openai_compat.js";
@@ -66,11 +66,11 @@ export function getLLMProvider(providerId?: string, modelName?: string): LLMProv
  */
 export function listLLMProviders(): { id: string; model: string; isDefault: boolean }[] {
   return [
-    { id: "zai", model: DEFAULT_FAST_MODEL, isDefault: true },
+    { id: "zai", model: DEFAULT_FAST_MODEL, isDefault: DEFAULT_LLM_PROVIDER === "zai" },
     {
       id: "openai-compatible",
-      model: process.env.ONYX_OPENAI_MODEL ?? "default",
-      isDefault: false,
+      model: OPENAI_MODEL,
+      isDefault: DEFAULT_LLM_PROVIDER === "openai-compatible",
     },
   ];
 }

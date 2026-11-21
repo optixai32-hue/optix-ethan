@@ -11,6 +11,7 @@
  * take-a-lock-before-upgrade behavior.
  */
 import { getDb } from "../client.js";
+import { IS_SERVERLESS_SHARED_DB } from "../../configs/constants.js";
 import { getLogger } from "../../utils/logger.js";
 
 export interface MigrationVersion {
@@ -51,7 +52,7 @@ export async function runMigrations(): Promise<void> {
     // ONYX_SERVERLESS), skip locking entirely — migrations are IF NOT EXISTS
     // idempotent, so a rare concurrent double-run is safe.
     let lockAcquired = false;
-    const sharedDb = Boolean(process.env.ONYX_DB_SCHEMA?.trim() || process.env.ONYX_SERVERLESS);
+    const sharedDb = IS_SERVERLESS_SHARED_DB;
     if (!sharedDb) {
       try {
         await client.query("SET statement_timeout = '5s'");

@@ -1,8 +1,25 @@
-import {
-  INTERNAL_URL,
-  SERVER_SIDE_ONLY__AUTH_COOKIE_NAME,
-} from "@/lib/constants";
+import { SERVER_SIDE_ONLY__AUTH_COOKIE_NAME } from "@/lib/constants";
+import { INTERNAL_URL } from "@/lib/constants";
 import { NextRequest, NextResponse } from "next/server";
+
+/*
+ * Backend surface — dual mode:
+ *
+ *  1. Split deployment (default local / self-hosted behind nginx): /api/* is
+ *     proxied over HTTP to the standalone backend at INTERNAL_URL.
+ *
+ *  2. Single deployment (Vercel): the TS backend (Hono app, repo sibling
+ *     `backend/`) runs IN-PROCESS inside this Next.js function. No separate
+ *     backend host exists — requests are dispatched directly to the Hono app
+ *     via app.fetch(), and server-side callers reach it through
+ *     INTERNAL_URL = https://<VERCEL_URL>/api (see lib/constants.ts).
+ *     Detected via the VERCEL_URL system env, which Vercel injects into every
+ *     function instance.
+ */
+
+const IS_VERCEL_RUNTIME = Boolean(
+  process.env.VERCEL_URL || process.env.VERCEL === "1"
+);
 
 /* NextJS is annoying and makes use use a separate function for
 each request type >:( */
@@ -63,7 +80,116 @@ export async function OPTIONS(
   return handleRequest(request, params.path);
 }
 
-async function handleRequest(request: NextRequest, path: string[]) {
+// In-process backend bundle — loaded lazily on first request so route module
+// evaluation stays cheap and import failures surface as a clean 500.
+type HonoApp = { fetch: (req: Request) => Response | Promise<Response> };
+let backendBundlePromise: Promise<{ app: HonoApp }> | null = null;
+
+function loadBackendBundle(): Promise<{ app: HonoApp }> {
+  if (!backendBundlePromise) {
+    backendBundlePromise = (async () => {
+      const [{ app }, { ensureServerlessInit }] = await Promise.all([
+        import("onyx-ts/server/app"),
+        import("onyx-ts/server/vercel_init"),
+      ]);
+      // One-time per-process bootstrapping: DB migrations + LLM provider
+      // seeding (idempotent, fail-open — mirrors the backend's own boot).
+      await ensureServerlessInit();
+      return { app: app as unknown as HonoApp };
+    })().catch((err) => {
+      // Never memoize a failed import: the next request retries the load.
+      backendBundlePromise = null;
+      throw err;
+    });
+  }
+  return backendBundlePromise;
+}
+
+/**
+ * Dispatch the request to the in-process Hono app (single-deployment mode).
+ * The response is rebuilt as a NextResponse so multiple Set-Cookie headers
+ * (login/session refresh) and streaming bodies (chat SSE) survive intact.
+ */
+async function dispatchInProcess(
+  request: NextRequest,
+  path: string[]
+): Promise<NextResponse> {
+  try {
+    const { app } = await loadBackendBundle();
+
+    // Rebuild the target URL with only the backend-relative path (strip the
+    // /api prefix) plus the original query string.
+    const incoming = new URL(request.url);
+    const target = new URL("/", incoming.origin);
+    target.pathname = `/${path.join("/")}`;
+    target.search = incoming.search;
+
+    // Hop-by-hop / re-encoded headers must not leak into the sub-request.
+    const headers = new Headers(request.headers);
+    headers.delete("connection");
+    headers.delete("keep-alive");
+    headers.delete("transfer-encoding");
+    headers.delete("upgrade");
+
+    const hasBody = request.method !== "GET" && request.method !== "HEAD";
+    let body: ArrayBuffer | undefined;
+    if (hasBody) {
+      body = await request.arrayBuffer();
+      if (body.byteLength === 0) {
+        body = undefined;
+        headers.delete("content-length");
+      }
+    } else {
+      headers.delete("content-length");
+    }
+
+    const honoRes = await app.fetch(
+      new Request(target.toString(), {
+        method: request.method,
+        headers,
+        body,
+      })
+    );
+
+    // Preserve every Set-Cookie (fastapiusersauth session etc.).
+    const setCookies = honoRes.headers.getSetCookie?.() ?? [];
+    const responseHeaders = new Headers(honoRes.headers);
+    responseHeaders.delete("set-cookie");
+
+    const contentType = responseHeaders.get("content-type") ?? "";
+    if (contentType.includes("stream") || responseHeaders.get("transfer-encoding")) {
+      responseHeaders.delete("content-length");
+      responseHeaders.set("Cache-Control", "no-cache, no-transform");
+      responseHeaders.set("X-Accel-Buffering", "no");
+    }
+
+    const response = new NextResponse(honoRes.body, {
+      status: honoRes.status,
+      headers: responseHeaders,
+    });
+    for (const cookie of setCookies) {
+      if (cookie) {
+        response.headers.append("set-cookie", cookie);
+      }
+    }
+    return response;
+  } catch (error: unknown) {
+    console.error("In-process backend dispatch error:", error);
+    return NextResponse.json(
+      {
+        message: "Backend dispatch error",
+        error:
+          error instanceof Error ? error.message : "An unknown error occurred",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+async function proxyToBackend(
+  request: NextRequest,
+  path: string[]
+): Promise<NextResponse> {
   if (
     process.env.NODE_ENV !== "development" &&
     // NOTE: Set this environment variable to 'true' for preview environments
@@ -168,4 +294,12 @@ async function handleRequest(request: NextRequest, path: string[]) {
       { status: 500 }
     );
   }
+}
+
+async function handleRequest(request: NextRequest, path: string[]) {
+  if (IS_VERCEL_RUNTIME) {
+    // Single deployment: the backend lives inside this function.
+    return dispatchInProcess(request, path);
+  }
+  return proxyToBackend(request, path);
 }

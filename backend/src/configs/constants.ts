@@ -7,8 +7,33 @@
 export const API_PORT = Number(process.env.ONYX_API_PORT ?? 8080);
 
 // Postgres (relational DB of Standard; running instance from the standard-mode stack)
+// Fallback chain: ONYX_POSTGRES_URI -> DATABASE_URL. The DATABASE_URL fallback
+// powers the single-deployment Vercel build (web + backend in one Next.js
+// project), where the shared env carries the managed (Supabase) DSN under the
+// DATABASE_URL name and no ONYX_POSTGRES_URI exists.
 export const POSTGRES_URI =
-  process.env.ONYX_POSTGRES_URI?.trim() || "";
+  process.env.ONYX_POSTGRES_URI?.trim() ||
+  process.env.DATABASE_URL?.trim() ||
+  "";
+
+// Shared hosted Postgres (Supavisor/Neon pooler) detection. A pooled shared
+// DB is isolated into the dedicated "onyx" schema (same convention the
+// nelth-ai-api serverless deployment used via ONYX_DB_SCHEMA) so the onyx
+// tables never collide with the host database's own tables.
+export const IS_SHARED_HOSTED_DB =
+  /pooler\.(supabase|neon)\.com|\.supabase\.co|neon\.tech/.test(POSTGRES_URI);
+export const DB_SCHEMA =
+  process.env.ONYX_DB_SCHEMA?.trim() || (IS_SHARED_HOSTED_DB ? "onyx" : "");
+
+// Serverless / shared-DB profile (migrations skip session advisory locks):
+// ONYX_SERVERLESS, or a dedicated schema on a shared hosted DB, or any Vercel
+// runtime. Mirrors the detection the nelth-ai-api deployment relied on.
+export const IS_SERVERLESS_SHARED_DB = Boolean(
+  DB_SCHEMA ||
+    process.env.ONYX_SERVERLESS?.trim() ||
+    process.env.VERCEL_URL ||
+    process.env.VERCEL === "1",
+);
 
 // Redis (cache layer of Standard — real Redis at 127.0.0.1:6379)
 export const REDIS_URL = process.env.ONYX_REDIS_URL?.trim() || "";
@@ -32,9 +57,39 @@ export const DEFAULT_CHUNK_OVERLAP = Number(process.env.ONYX_CHUNK_OVERLAP ?? 76
 export const CHUNK_MAX_TOKENS_HARD = DEFAULT_CHUNK_SIZE + 100;
 
 // LLM (inference_model_server boundary)
-export const DEFAULT_LLM_PROVIDER = process.env.ONYX_LLM_PROVIDER ?? "zai";
-export const DEFAULT_FAST_MODEL = process.env.ONYX_FAST_MODEL ?? "default";
-export const DEFAULT_STRONG_MODEL = process.env.ONYX_STRONG_MODEL ?? "default";
+// OpenAI-compatible surface. On single-deployment Vercel builds the KILO
+// gateway envs (present on the shared web project) act as fallbacks so chat
+// works without any ONYX_OPENAI_* variables being set.
+export const OPENAI_API_BASE =
+  process.env.ONYX_OPENAI_API_BASE?.trim() ||
+  process.env.KILO_GATEWAY_BASE_URL?.trim() ||
+  "";
+export const OPENAI_API_KEY =
+  process.env.ONYX_OPENAI_API_KEY?.trim() ||
+  process.env.KILO_GATEWAY_API_KEY?.trim() ||
+  null;
+export const OPENAI_MODEL =
+  process.env.ONYX_OPENAI_MODEL?.trim() ||
+  process.env.ONYX_STRONG_MODEL?.trim() ||
+  process.env.DEFAULT_MODELS?.trim() ||
+  "default";
+
+// Default provider when no explicit providerId is given: on Vercel runtimes
+// (no z-ai config file) route to the OpenAI-compatible gateway, elsewhere
+// keep the sandbox z.ai provider.
+export const DEFAULT_LLM_PROVIDER =
+  process.env.ONYX_LLM_PROVIDER?.trim() ||
+  (process.env.VERCEL_URL || process.env.VERCEL === "1" || (OPENAI_API_BASE && OPENAI_API_KEY)
+    ? "openai-compatible"
+    : "zai");
+export const DEFAULT_FAST_MODEL =
+  process.env.ONYX_FAST_MODEL?.trim() ||
+  process.env.DEFAULT_MODELS?.trim() ||
+  "default";
+export const DEFAULT_STRONG_MODEL =
+  process.env.ONYX_STRONG_MODEL?.trim() ||
+  process.env.DEFAULT_MODELS?.trim() ||
+  "default";
 
 // Auth
 // Port of onyx/auth/session_tokens.py FASTAPI_USERS_AUTH_COOKIE_NAME — the
@@ -115,7 +170,7 @@ export type DocumentSource = (typeof VALID_SOURCE_TYPES)[number];
 export function requirePostgresUri(): string {
   if (!POSTGRES_URI) {
     throw new Error(
-      "ONYX_POSTGRES_URI is not set. Standard mode requires the Postgres (pgserver) DSN.",
+      "No Postgres DSN: set ONYX_POSTGRES_URI (or DATABASE_URL for the single-deployment Vercel build).",
     );
   }
   return POSTGRES_URI;

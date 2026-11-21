@@ -39,6 +39,9 @@
       ],
       "@opal/types/*": [
         "./lib/opal/src/types/*"
+      ],
+      "onyx-ts/*": [
+        "../backend/src/*"
       ]
     }
   },

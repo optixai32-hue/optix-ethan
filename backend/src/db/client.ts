@@ -3,7 +3,7 @@
  * Single shared pool; all modules import { getDb } and run parameterized SQL.
  */
 import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from "pg";
-import { POSTGRES_URI, requirePostgresUri } from "../configs/constants.js";
+import { DB_SCHEMA, POSTGRES_URI, requirePostgresUri } from "../configs/constants.js";
 import { getLogger } from "../utils/logger.js";
 
 const logger = getLogger("db.client");
@@ -21,10 +21,11 @@ export function getDb(): Pool {
     const wantsTls = !isLocal && (rawUri.includes("sslmode=") || /pooler?\.?(supabase|neon|amazonaws|rds)\./.test(rawUri) || process.env.PGSSL === "require");
     const uri = wantsTls ? stripSslParams(rawUri) : rawUri;
     // Shared managed databases (Supabase with a pre-existing app schema)
-    // may already contain colliding table names. ONYX_DB_SCHEMA isolates the
-    // onyx tables into a dedicated Postgres schema via the search_path
-    // startup parameter (applies to every pooled connection).
-    const dbSchema = process.env.ONYX_DB_SCHEMA?.trim();
+    // may already contain colliding table names. The resolved DB_SCHEMA
+    // (ONYX_DB_SCHEMA, or the automatic "onyx" default on shared hosted
+    // poolers) isolates the onyx tables via the search_path startup
+    // parameter (applies to every pooled connection).
+    const dbSchema = DB_SCHEMA;
     pool = new Pool({
       connectionString: uri,
       max: 10,

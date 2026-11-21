@@ -2,7 +2,15 @@ export const IS_DEV = process.env.NODE_ENV === "development";
 
 export const HOST_URL = process.env.WEB_DOMAIN || "http://localhost:3000";
 
-export const INTERNAL_URL = process.env.INTERNAL_URL || "http://localhost:8080";
+// Backend base URL for server-side fetches.
+//  - Vercel single deployment: the TS backend runs IN-PROCESS in this app; the
+//    only way to reach it (from server components / route handlers) is the
+//    deployment's own public /api surface, which dispatches via app.fetch().
+//    Any stale INTERNAL_URL is deliberately ignored in that mode.
+//  - Split deployments: INTERNAL_URL points at the standalone backend.
+export const INTERNAL_URL = process.env.VERCEL_URL
+  ? `https://${process.env.VERCEL_URL}/api`
+  : process.env.INTERNAL_URL || "http://localhost:8080";
 
 // Documentation URLs
 export const DOCS_BASE_URL = "https://docs.onyx.app";

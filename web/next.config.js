@@ -1,10 +1,20 @@
 // Always require withSentryConfig
+const path = require("path");
 const { withSentryConfig } = require("@sentry/nextjs");
 const { PHASE_DEVELOPMENT_SERVER } = require("next/constants");
 const createNextIntlPlugin = require("next-intl/plugin");
 
 // Points next-intl at the request-scoped locale/message resolution.
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
+
+// Backend rewrite target: on Vercel single deployments the backend lives
+// IN-PROCESS behind this app's own /api surface (the repo-sibling backend/
+// is bundled into the api route handler), so rewrites point at the deployment
+// itself. Split deployments keep INTERNAL_URL.
+const BACKEND_REWRITE_TARGET =
+  process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}/api`
+    : process.env.INTERNAL_URL || "http://localhost:8080";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -33,11 +43,25 @@ const nextConfig = {
   agentRules: false,
   // NOTE: `reactCompiler` is set per-phase in module.exports below — enabled for
   // builds, disabled for the dev server. See the comment there for the rationale.
-  // Pin the workspace root to this directory so Turbopack resolves modules
-  // against web/bun.lock. Without this, Next.js detects multiple lockfiles
-  // (the repo-root bun.lock and web/bun.lock) and infers the wrong root.
+  // Pin the workspace root to the REPO root so Turbopack (a) allows importing
+  // the repo-sibling backend/ source (bundled in-process into the /api route
+  // handler for single deployments) and (b) traces those modules into the
+  // serverless output via outputFileTracingRoot. The repo root has no lockfile
+  // of its own (web/bun.lock + backend/bun.lock are the two real roots), so
+  // Next cannot mis-infer the workspace from here.
   turbopack: {
-    root: __dirname,
+    root: path.join(__dirname, ".."),
+  },
+  outputFileTracingRoot: path.join(__dirname, ".."),
+  // Webpack fallback: the backend uses ESM-style `./x.js` imports from .ts
+  // files; map them so a webpack build (next build --webpack) also resolves.
+  webpack: (config) => {
+    config.resolve.extensionAlias = {
+      ".js": [".ts", ".tsx", ".js"],
+      ".mts": [".mts"],
+      ".cts": [".cts"],
+    };
+    return config;
   },
   images: {
     // Used to fetch favicons
@@ -82,9 +106,7 @@ const nextConfig = {
       {
         source:
           "/api/build/sessions/:sessionId/webapp/_next/:hmrEndpoint(hmr|webpack-hmr)",
-        destination: `${
-          process.env.INTERNAL_URL || "http://localhost:8080"
-        }/build/sessions/:sessionId/webapp/_next/:hmrEndpoint`,
+        destination: `${BACKEND_REWRITE_TARGET}/build/sessions/:sessionId/webapp/_next/:hmrEndpoint`,
       },
       {
         source: "/ph_ingest/static/:path*",
@@ -98,21 +120,15 @@ const nextConfig = {
       },
       {
         source: "/api/docs/:path*", // catch /api/docs and /api/docs/...
-        destination: `${
-          process.env.INTERNAL_URL || "http://localhost:8080"
-        }/docs/:path*`,
+        destination: `${BACKEND_REWRITE_TARGET}/docs/:path*`,
       },
       {
         source: "/api/docs", // if you also need the exact /api/docs
-        destination: `${
-          process.env.INTERNAL_URL || "http://localhost:8080"
-        }/docs`,
+        destination: `${BACKEND_REWRITE_TARGET}/docs`,
       },
       {
         source: "/openapi.json",
-        destination: `${
-          process.env.INTERNAL_URL || "http://localhost:8080"
-        }/openapi.json`,
+        destination: `${BACKEND_REWRITE_TARGET}/openapi.json`,
       },
     ];
   },
@@ -326,9 +342,7 @@ module.exports = (phase) => {
             return [
               {
                 source: "/.well-known/oauth-authorization-server/:path*",
-                destination: `${
-                  process.env.INTERNAL_URL || "http://localhost:8080"
-                }/oauth-provider/metadata`,
+                destination: `${BACKEND_REWRITE_TARGET}/oauth-provider/metadata`,
               },
               {
                 source: "/.well-known/oauth-protected-resource/:path*",
