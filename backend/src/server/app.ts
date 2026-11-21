@@ -31,7 +31,6 @@ import { artifactsRoutes } from "./routes/artifacts";
 import { mcpRoutes } from "./routes/mcp";
 import { integrationsRoutes } from "./routes/integrations";
 import { featuresRoutes } from "./routes/features";
-import { adminSurfaceRoutes } from "./routes/admin_surface";
 
 const logger = getLogger("api.server");
 
@@ -82,6 +81,5 @@ app.route("/", integrationsRoutes); // /integrations surface
 app.route("/artifacts", artifactsRoutes);
 app.route("/mcp", mcpRoutes);
 app.route("/", featuresRoutes); // /input_prompt, /mcp/servers, /query/valid-tags, ... feature read paths
-app.route("/", adminSurfaceRoutes); // admin-surface fill-ins (license, search-settings, index-monitoring, ...)
 
 export { app };

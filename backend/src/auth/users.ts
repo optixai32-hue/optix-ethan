@@ -46,10 +46,10 @@ export async function createUser(email: string, password: string, opts: CreateUs
   }
 
   const passwordHash = await hashPassword(password);
-  // Deployment policy (all accounts are admin): the default role is "admin"
-  // instead of the original's register-time `is_admin = user_count == 0`
-  // heuristic; explicit opts.role callers keep working unchanged.
-  const role = opts.role ?? "admin";
+  // Port of auth/users.py register(): is_admin = user_count == 0 (MIT;
+  // get_default_admin_user_emails() returns [] for Standard deployments).
+  const isFirstUser = await getUserCount() === 0;
+  const role = opts.role ?? (isFirstUser ? "admin" : "basic");
   const isActive = opts.isActive ?? true;
 
   try {
@@ -64,10 +64,9 @@ export async function createUser(email: string, password: string, opts: CreateUs
     }
     const user = rowToUser(row);
     // Port of on_after_register -> assign_user_to_default_groups__no_commit
-    // (db/users.py:835): place the user in the Admin default group (isAdmin is
-    // forced for every account under this deployment's all-admin policy), then
-    // materialize effective_permissions (recompute_user_permissions__no_commit).
-    await assignUserToDefaultGroups(user.id, true);
+    // (db/users.py:835): place the user in the Admin or Basic default group,
+    // then materialize effective_permissions (recompute_user_permissions__no_commit).
+    await assignUserToDefaultGroups(user.id, isFirstUser);
     logger.info("created user", { email: normalizedEmail, role });
     return (await getUserById(user.id)) ?? user;
   } catch (err) {
