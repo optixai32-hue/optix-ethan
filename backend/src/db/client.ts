@@ -3,7 +3,7 @@
  * Single shared pool; all modules import { getDb } and run parameterized SQL.
  */
 import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from "pg";
-import { DB_SCHEMA, POSTGRES_URI, requirePostgresUri } from "../configs/constants";
+import { DB_SCHEMA, IS_SERVERLESS_SHARED_DB, POSTGRES_URI, requirePostgresUri } from "../configs/constants";
 import { getLogger } from "../utils/logger";
 
 const logger = getLogger("db.client");
@@ -26,10 +26,17 @@ export function getDb(): Pool {
     // poolers) isolates the onyx tables via the search_path startup
     // parameter (applies to every pooled connection).
     const dbSchema = DB_SCHEMA;
+    // Serverless/shared deployments (Vercel + managed poolers like Supavisor
+    // session mode) cap concurrent client sessions per project (e.g. 15).
+    // Every function instance carries its own pool, so keep it small there —
+    // each invocation runs a handful of sequential queries. Local/standalone
+    // keeps the roomier pool.
+    const poolMax = IS_SERVERLESS_SHARED_DB ? 3 : 10;
+    const idleTimeout = IS_SERVERLESS_SHARED_DB ? 10_000 : 30_000;
     pool = new Pool({
       connectionString: uri,
-      max: 10,
-      idleTimeoutMillis: 30_000,
+      max: poolMax,
+      idleTimeoutMillis: idleTimeout,
       connectionTimeoutMillis: 10_000,
       ...(dbSchema ? { options: `-c search_path=${dbSchema},public` } : {}),
       ...(wantsTls ? { ssl: { rejectUnauthorized: false } } : {}),

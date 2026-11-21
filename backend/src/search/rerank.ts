@@ -80,7 +80,7 @@ export async function rerankDocs(
   if (docs.length <= 1) return applyTopN(docs);
 
   try {
-    const llm = getLLMProvider();
+    const llm = await getLLMProvider();
     const numbered = docs
       .slice(0, 20)
       .map((doc, i) => formatDoc(doc, i + 1))

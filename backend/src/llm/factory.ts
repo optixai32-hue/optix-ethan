@@ -16,12 +16,20 @@
  */
 
 import type { LLMProvider } from "./types";
-import { DEFAULT_FAST_MODEL, DEFAULT_LLM_PROVIDER, OPENAI_MODEL } from "../configs/constants";
+import {
+  DEFAULT_FAST_MODEL,
+  DEFAULT_LLM_PROVIDER,
+  IS_SERVERLESS_SHARED_DB,
+  OPENAI_MODEL,
+} from "../configs/constants";
 import { getLogger } from "../utils/logger";
 import { ZaiProvider } from "./providers/zai";
 import { OpenaiCompatProvider } from "./providers/openai_compat";
 
 const logger = getLogger("llm.factory");
+
+// Serverless runtimes (Vercel) cannot reach the z.ai SDK config surface.
+const IS_SERVERLESS_RUNTIME = IS_SERVERLESS_SHARED_DB || Boolean(process.env.VERCEL_URL || process.env.VERCEL === "1");
 
 let zaiSingleton: ZaiProvider | null = null;
 
@@ -34,27 +42,99 @@ function getZaiSingleton(modelName: string): ZaiProvider {
 }
 
 /**
- * Resolve an LLMProvider. Exact stub signature preserved:
- * getLLMProvider(providerId?: string, modelName?: string): LLMProvider.
+ * DB-backed default provider/model resolution — the llm_provider row written
+ * through the admin surface is the single source of truth for the default
+ * chat model (env constants like DEFAULT_MODELS go stale on managed
+ * deployments, e.g. retired gateway models). Cached per process for 30s so
+ * the hot chat path stays cheap; falls back to env constants when the DB is
+ * unreachable or unseeded.
  */
-export function getLLMProvider(providerId?: string, modelName?: string): LLMProvider {
-  const model = modelName ?? DEFAULT_FAST_MODEL;
+const DEFAULT_PROVIDER_CACHE_TTL_MS = 30_000;
+let defaultProviderCache:
+  | { providerId: string; modelName: string; fetchedAt: number }
+  | null = null;
+
+async function resolveDefaultProvider(): Promise<{
+  providerId: string;
+  modelName: string;
+}> {
+  const now = Date.now();
+  if (
+    defaultProviderCache &&
+    now - defaultProviderCache.fetchedAt < DEFAULT_PROVIDER_CACHE_TTL_MS
+  ) {
+    return {
+      providerId: defaultProviderCache.providerId,
+      modelName: defaultProviderCache.modelName,
+    };
+  }
+  let resolved: { providerId: string; modelName: string };
+  try {
+    const { queryOne } = await import("../db/client");
+    const row = await queryOne<{
+      provider: string;
+      default_model_name: string | null;
+    }>(
+      "SELECT provider, default_model_name FROM llm_provider WHERE is_default = true ORDER BY id LIMIT 1",
+    );
+    if (row?.provider) {
+      resolved = {
+        providerId: row.provider,
+        modelName: row.default_model_name || DEFAULT_FAST_MODEL,
+      };
+    } else {
+      resolved = { providerId: DEFAULT_LLM_PROVIDER, modelName: DEFAULT_FAST_MODEL };
+    }
+  } catch (err) {
+    logger.warning("default provider DB lookup failed; using env defaults", {
+      error: String(err),
+    });
+    resolved = { providerId: DEFAULT_LLM_PROVIDER, modelName: DEFAULT_FAST_MODEL };
+  }
+  // The z.ai SDK surface has no config in serverless runtimes — reroute to
+  // the OpenAI-compatible gateway there.
+  if (
+    resolved.providerId === "zai" &&
+    IS_SERVERLESS_RUNTIME
+  ) {
+    resolved = { providerId: "openai-compatible", modelName: resolved.modelName };
+  }
+  defaultProviderCache = { ...resolved, fetchedAt: now };
+  return resolved;
+}
+
+/**
+ * Resolve an LLMProvider (async: the default provider/model comes from the
+ * DB when no explicit providerId/modelName is given).
+ * getLLMProvider(providerId?: string, modelName?: string): Promise<LLMProvider>.
+ */
+export async function getLLMProvider(
+  providerId?: string,
+  modelName?: string,
+): Promise<LLMProvider> {
   if (providerId === "openai-compatible") {
-    return new OpenaiCompatProvider(model);
+    return new OpenaiCompatProvider(modelName ?? OPENAI_MODEL);
+  }
+  if (providerId === "zai") {
+    return getZaiSingleton(modelName ?? DEFAULT_FAST_MODEL);
   }
   if (providerId === undefined || providerId === "") {
-    // Unset provider id: follow DEFAULT_LLM_PROVIDER (env ONYX_LLM_PROVIDER).
-    // On serverless deployments (Vercel) this routes to the OpenAI-compatible
-    // surface configured via ONYX_OPENAI_API_BASE/KEY; the sandbox keeps "zai".
-    if (DEFAULT_LLM_PROVIDER === "openai-compatible") {
+    // Unset provider id: follow the DB-backed default (admin-managed),
+    // falling back to env routing when the lookup yields nothing.
+    const def = await resolveDefaultProvider();
+    const model =
+      modelName && modelName !== "default" ? modelName : def.modelName;
+    if (def.providerId === "openai-compatible") {
       return new OpenaiCompatProvider(model);
     }
     return getZaiSingleton(model);
   }
-  if (providerId === "zai") {
-    return getZaiSingleton(model);
-  }
   logger.warning("unknown provider id; falling back to default", { providerId });
+  const def = await resolveDefaultProvider();
+  const model = modelName && modelName !== "default" ? modelName : def.modelName;
+  if (def.providerId === "openai-compatible") {
+    return new OpenaiCompatProvider(model);
+  }
   return getZaiSingleton(model);
 }
 

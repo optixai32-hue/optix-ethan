@@ -114,7 +114,7 @@ export async function generateChatSessionName(
   fallback: string,
 ): Promise<string> {
   try {
-    const provider = getLLMProvider(undefined, "default");
+    const provider = await getLLMProvider(undefined, "default");
     const llmMessages: LLMMessage[] = [
       { role: "system", content: CHAT_NAMING_SYSTEM_PROMPT },
       ...messages.map(

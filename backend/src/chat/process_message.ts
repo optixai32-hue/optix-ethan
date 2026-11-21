@@ -336,7 +336,7 @@ export async function processMessage(
             );
           }
 
-          const provider = getLLMProvider(
+          const provider = await getLLMProvider(
             undefined,
             persona.llm_model_version_override ?? undefined,
           );
