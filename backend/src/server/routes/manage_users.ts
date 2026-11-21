@@ -12,14 +12,14 @@
  *   (db/models.py User.440-446, Memory.585).
  */
 import { Hono } from "hono";
-import { getAuth, requireAuth } from "../../auth/middleware.js";
+import { getAuth, requireAuth } from "../../auth/middleware";
 import {
   adminCapabilities,
   getEffectivePermissions,
   Permission,
-} from "../../auth/permissions.js";
-import { query, queryOne } from "../../db/client.js";
-import type { User } from "../../types/domain.js";
+} from "../../auth/permissions";
+import { query, queryOne } from "../../db/client";
+import type { User } from "../../types/domain";
 
 export const manageUsersRoutes = new Hono();
 

@@ -31,35 +31,35 @@ import type {
   Citation,
   Persona,
   SearchDoc,
-} from "../types/domain.js";
-import { getLogger } from "../utils/logger.js";
+} from "../types/domain";
+import { getLogger } from "../utils/logger";
 import {
   ChatRuntimeError,
   InvalidMessageExceptionError,
   LLMGenerationError,
   OnyxError,
-} from "../utils/errors.js";
-import { getLLMProvider } from "../llm/factory.js";
-import type { LLMMessage, LLMToolSpec } from "../llm/types.js";
-import { StreamEmitter } from "./emitter.js";
-import { StreamBuffer } from "./stream_buffer.js";
-import type { Packet } from "./models.js";
+} from "../utils/errors";
+import { getLLMProvider } from "../llm/factory";
+import type { LLMMessage, LLMToolSpec } from "../llm/types";
+import { StreamEmitter } from "./emitter";
+import { StreamBuffer } from "./stream_buffer";
+import type { Packet } from "./models";
 import {
   appendChatMessage,
   getChatMessages,
   getChatSession,
   updateChatMessage,
-} from "./persistence.js";
-import { buildHistory } from "./history_store.js";
-import { getDefaultPersona, getPersona } from "../agents/personas.js";
-import { buildCitedSystemPrompt } from "../rag/prompt_builder.js";
+} from "./persistence";
+import { buildHistory } from "./history_store";
+import { getDefaultPersona, getPersona } from "../agents/personas";
+import { buildCitedSystemPrompt } from "../rag/prompt_builder";
 import {
   buildCitationsForAnswer,
   DynamicCitationProcessor,
-} from "../rag/citations.js";
-import type { CitationInfoEvent } from "../rag/citations.js";
-import { getTool, listTools } from "../tools/registry.js";
-import { registerBuiltInTools } from "../tools/built_in_tools.js";
+} from "../rag/citations";
+import type { CitationInfoEvent } from "../rag/citations";
+import { getTool, listTools } from "../tools/registry";
+import { registerBuiltInTools } from "../tools/built_in_tools";
 
 const logger = getLogger("chat.process_message");
 

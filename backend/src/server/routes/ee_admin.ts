@@ -36,10 +36,10 @@
 import { Hono, type Context } from "hono";
 import { createHash } from "node:crypto";
 import { hostname } from "node:os";
-import { getAuth, requireAdmin } from "../../auth/middleware.js";
-import { query, queryOne } from "../../db/client.js";
-import { NotFoundError } from "../../utils/errors.js";
-import { getLogger } from "../../utils/logger.js";
+import { getAuth, requireAdmin } from "../../auth/middleware";
+import { query, queryOne } from "../../db/client";
+import { NotFoundError } from "../../utils/errors";
+import { getLogger } from "../../utils/logger";
 
 const logger = getLogger("server.routes.ee_admin");
 

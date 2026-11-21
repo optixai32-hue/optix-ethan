@@ -3,8 +3,8 @@
  * Single shared pool; all modules import { getDb } and run parameterized SQL.
  */
 import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from "pg";
-import { DB_SCHEMA, POSTGRES_URI, requirePostgresUri } from "../configs/constants.js";
-import { getLogger } from "../utils/logger.js";
+import { DB_SCHEMA, POSTGRES_URI, requirePostgresUri } from "../configs/constants";
+import { getLogger } from "../utils/logger";
 
 const logger = getLogger("db.client");
 

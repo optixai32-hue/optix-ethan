@@ -19,10 +19,10 @@ import type {
   LLMRequestOpts,
   LLMStreamEvent,
   LLMToolCall,
-} from "../types.js";
-import { LLMGenerationError } from "../../utils/errors.js";
-import { getLogger } from "../../utils/logger.js";
-import { OPENAI_API_BASE, OPENAI_API_KEY, OPENAI_MODEL } from "../../configs/constants.js";
+} from "../types";
+import { LLMGenerationError } from "../../utils/errors";
+import { getLogger } from "../../utils/logger";
+import { OPENAI_API_BASE, OPENAI_API_KEY, OPENAI_MODEL } from "../../configs/constants";
 
 const logger = getLogger("llm.openai_compat");
 

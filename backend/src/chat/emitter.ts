@@ -14,7 +14,7 @@
  *   - toJSONL()                              — newline-delimited JSON replay
  */
 
-import type { Packet, PacketType } from "./models.js";
+import type { Packet, PacketType } from "./models";
 
 export type PacketSubscriber = (packet: Packet) => void;
 

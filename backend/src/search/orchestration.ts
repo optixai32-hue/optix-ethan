@@ -10,13 +10,13 @@
  * Pipeline: ensure index -> embed query -> keyword + vector retrieval in
  * parallel -> RRF fusion -> optional LLM rerank -> post-fusion filter + cap.
  */
-import type { SearchDoc } from "../types/domain.js";
-import { DEFAULT_NUM_RETRIEVED_DOCS, RRF_K } from "../configs/constants.js";
-import { ensureDocumentIndex, keywordSearch, vectorSearch } from "../indexing/document_index/opensearch_index.js";
-import { embedTexts } from "../indexing/embeddings.js";
-import { reciprocalRankFusion } from "./rrf.js";
-import { rerankDocs } from "./rerank.js";
-import { getLogger } from "../utils/logger.js";
+import type { SearchDoc } from "../types/domain";
+import { DEFAULT_NUM_RETRIEVED_DOCS, RRF_K } from "../configs/constants";
+import { ensureDocumentIndex, keywordSearch, vectorSearch } from "../indexing/document_index/opensearch_index";
+import { embedTexts } from "../indexing/embeddings";
+import { reciprocalRankFusion } from "./rrf";
+import { rerankDocs } from "./rerank";
+import { getLogger } from "../utils/logger";
 
 const logger = getLogger("search.orchestration");
 

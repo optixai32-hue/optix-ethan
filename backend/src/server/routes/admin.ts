@@ -19,11 +19,11 @@
  * router inclusion.
  */
 import { Hono, type Context } from "hono";
-import { query } from "../../db/client.js";
-import { getRedis } from "../../key_value_store/redis_compat.js";
-import { ForbiddenError } from "../../utils/errors.js";
-import { getLogger } from "../../utils/logger.js";
-import { connectorsRoutes, requireUser } from "./connectors.js";
+import { query } from "../../db/client";
+import { getRedis } from "../../key_value_store/redis_compat";
+import { ForbiddenError } from "../../utils/errors";
+import { getLogger } from "../../utils/logger";
+import { connectorsRoutes, requireUser } from "./connectors";
 
 const logger = getLogger("server.routes.admin");
 

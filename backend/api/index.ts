@@ -11,8 +11,8 @@
  * API (Request -> Response). The default export uses the legacy (req, res)
  * signature on @vercel/node and IGNORES returned Responses — do not use it.
  */
-import { app } from "../src/server/app.js";
-import { ensureServerlessInit } from "../src/server/vercel_init.js";
+import { app } from "../src/server/app";
+import { ensureServerlessInit } from "../src/server/vercel_init";
 
 export const config = { runtime: "nodejs" };
 

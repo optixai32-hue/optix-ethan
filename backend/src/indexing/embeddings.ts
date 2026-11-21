@@ -17,8 +17,8 @@ import {
   INDEXING_BATCH_SIZE,
   INDEXING_EMBEDDING_DIM,
   INDEXING_EMBEDDING_MODEL,
-} from "../configs/constants.js";
-import { getLogger } from "../utils/logger.js";
+} from "../configs/constants";
+import { getLogger } from "../utils/logger";
 
 const logger = getLogger("indexing.embeddings");
 

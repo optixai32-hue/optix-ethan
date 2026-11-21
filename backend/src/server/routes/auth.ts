@@ -20,15 +20,15 @@ import {
   SESSION_COOKIE_NAME,
   SESSION_EXPIRY_HOURS,
   AUTH_CONFIG,
-} from "../../configs/constants.js";
-import { getLogger } from "../../utils/logger.js";
-import { AuthError, InvalidRequestError, NotFoundError } from "../../utils/errors.js";
-import { createApiKey, listApiKeys, deleteApiKey } from "../../auth/api_keys.js";
-import { createUser, getUserByEmail, ensureDefaultAdmin } from "../../auth/users.js";
-import { createSession, deleteSession, extendSession, getSessionUser } from "../../auth/sessions.js";
-import { verifyPassword } from "../../auth/password.js";
-import { getAuth, requireAuth } from "../../auth/middleware.js";
-import type { User } from "../../types/domain.js";
+} from "../../configs/constants";
+import { getLogger } from "../../utils/logger";
+import { AuthError, InvalidRequestError, NotFoundError } from "../../utils/errors";
+import { createApiKey, listApiKeys, deleteApiKey } from "../../auth/api_keys";
+import { createUser, getUserByEmail, ensureDefaultAdmin } from "../../auth/users";
+import { createSession, deleteSession, extendSession, getSessionUser } from "../../auth/sessions";
+import { verifyPassword } from "../../auth/password";
+import { getAuth, requireAuth } from "../../auth/middleware";
+import type { User } from "../../types/domain";
 
 const logger = getLogger("routes.auth");
 

@@ -12,7 +12,7 @@
  * Vixie rule preserved: when BOTH day-of-month and day-of-week are restricted
  * (not a full `*`), the day matches if EITHER field matches.
  */
-import { getLogger } from "../utils/logger.js";
+import { getLogger } from "../utils/logger";
 
 const logger = getLogger("background.cron");
 

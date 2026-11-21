@@ -2,7 +2,7 @@
  * Vercel catch-all for /api/<sub-path> — delegates to the same handler as
  * api/index.ts (api/index.ts maps to /api exactly; this file to /api/<anything>).
  */
-import { vercelHandler } from "./index.js";
+import { vercelHandler } from "./index";
 
 export const config = { runtime: "nodejs" };
 

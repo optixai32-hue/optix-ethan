@@ -17,8 +17,8 @@
  * operation is wrapped in try/catch and logs a warning instead of throwing.
  */
 import Redis from "ioredis";
-import { REDIS_KEY_PREFIX, REDIS_URL } from "../configs/constants.js";
-import { getLogger } from "../utils/logger.js";
+import { REDIS_KEY_PREFIX, REDIS_URL } from "../configs/constants";
+import { getLogger } from "../utils/logger";
 
 const logger = getLogger("key_value_store.redis");
 

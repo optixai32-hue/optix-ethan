@@ -12,13 +12,13 @@
  * ensureDefaultAdmin bootstraps the admin account from DEFAULT_ADMIN_EMAIL /
  * DEFAULT_ADMIN_PASSWORD (configs/constants.ts) when no active admin exists.
  */
-import { query, queryOne } from "../db/client.js";
-import { rowToUser } from "../db/models/rows.js";
-import { DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD } from "../configs/constants.js";
-import { getLogger } from "../utils/logger.js";
-import { InvalidRequestError, NotFoundError } from "../utils/errors.js";
-import type { User } from "../types/domain.js";
-import { hashPassword } from "./password.js";
+import { query, queryOne } from "../db/client";
+import { rowToUser } from "../db/models/rows";
+import { DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD } from "../configs/constants";
+import { getLogger } from "../utils/logger";
+import { InvalidRequestError, NotFoundError } from "../utils/errors";
+import type { User } from "../types/domain";
+import { hashPassword } from "./password";
 
 const logger = getLogger("auth.users");
 

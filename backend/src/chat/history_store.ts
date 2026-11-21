@@ -14,8 +14,8 @@
  *     branch, chat_utils.py line 156).
  */
 
-import type { ChatMessage } from "../types/domain.js";
-import type { LLMMessage } from "../llm/types.js";
+import type { ChatMessage } from "../types/domain";
+import type { LLMMessage } from "../llm/types";
 
 export interface BuildHistoryOptions {
   /** Optional per-message token cap (max_individual_message_tokens). */

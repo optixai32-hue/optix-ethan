@@ -20,11 +20,11 @@
  * search results — so the agent can build its citation mapping.
  */
 
-import type { Tool, ToolContext, ToolResponse } from "../interface.js";
-import { searchDocuments } from "../../search/orchestration.js";
-import type { SearchRequest } from "../../search/orchestration.js";
-import type { SearchDoc } from "../../types/domain.js";
-import { getLogger } from "../../utils/logger.js";
+import type { Tool, ToolContext, ToolResponse } from "../interface";
+import { searchDocuments } from "../../search/orchestration";
+import type { SearchRequest } from "../../search/orchestration";
+import type { SearchDoc } from "../../types/domain";
+import { getLogger } from "../../utils/logger";
 
 const logger = getLogger("tools.search");
 

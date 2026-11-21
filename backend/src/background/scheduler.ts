@@ -33,11 +33,11 @@
  *   Stale 'running' rows older than 10 minutes are requeued on worker start
  *   (crash recovery; celery's acks_late/visibility timeout equivalent).
  */
-import { query, withTransaction } from "../db/client.js";
-import { WORKER_POLL_INTERVAL_MS } from "../configs/constants.js";
-import { getLogger, withRetry } from "../utils/logger.js";
-import { cronMatches } from "./cron.js";
-import { enqueueTask, getTaskHandler } from "./tasks.js";
+import { query, withTransaction } from "../db/client";
+import { WORKER_POLL_INTERVAL_MS } from "../configs/constants";
+import { getLogger, withRetry } from "../utils/logger";
+import { cronMatches } from "./cron";
+import { enqueueTask, getTaskHandler } from "./tasks";
 
 const logger = getLogger("background.scheduler");
 

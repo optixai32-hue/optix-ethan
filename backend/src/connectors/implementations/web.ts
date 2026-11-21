@@ -21,10 +21,10 @@
  * expansion.
  */
 import { parse } from "node-html-parser";
-import type { ConnectorDoc, SlimDocMetadata } from "../../types/domain.js";
-import type { ConnectorRunner } from "../framework.js";
-import { loadState, saveState } from "../framework.js";
-import { getLogger } from "../../utils/logger.js";
+import type { ConnectorDoc, SlimDocMetadata } from "../../types/domain";
+import type { ConnectorRunner } from "../framework";
+import { loadState, saveState } from "../framework";
+import { getLogger } from "../../utils/logger";
 
 const logger = getLogger("connectors.web");
 

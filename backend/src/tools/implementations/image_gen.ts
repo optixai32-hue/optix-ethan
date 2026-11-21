@@ -22,10 +22,10 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { getZaiClient } from "../../llm/providers/zai.js";
-import type { Tool, ToolResponse } from "../interface.js";
-import { FILE_STORE_DIR } from "../../configs/constants.js";
-import { getLogger } from "../../utils/logger.js";
+import { getZaiClient } from "../../llm/providers/zai";
+import type { Tool, ToolResponse } from "../interface";
+import { FILE_STORE_DIR } from "../../configs/constants";
+import { getLogger } from "../../utils/logger";
 
 const logger = getLogger("tools.image_gen");
 

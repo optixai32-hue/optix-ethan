@@ -20,9 +20,9 @@
  * content. Keep this interface EXACTLY: the factory (factory.ts) and the task
  * runtime depend on it.
  */
-import type { ConnectorDoc, SlimDocMetadata } from "../types/domain.js";
-import { kvGetJson, kvSetJson } from "../key_value_store/redis_compat.js";
-import { getLogger } from "../utils/logger.js";
+import type { ConnectorDoc, SlimDocMetadata } from "../types/domain";
+import { kvGetJson, kvSetJson } from "../key_value_store/redis_compat";
+import { getLogger } from "../utils/logger";
 
 const logger = getLogger("connectors.framework");
 

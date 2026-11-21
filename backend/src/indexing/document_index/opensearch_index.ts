@@ -14,8 +14,8 @@
  * cc_pair_ids, tenant_id) are intentionally absent — the mini-service is
  * single-tenant with DB-level auth.
  */
-import type { SearchDoc } from "../../types/domain.js";
-import { INDEXING_EMBEDDING_DIM } from "../../configs/constants.js";
+import type { SearchDoc } from "../../types/domain";
+import { INDEXING_EMBEDDING_DIM } from "../../configs/constants";
 import {
   bulkIndex,
   countByQuery,
@@ -26,8 +26,8 @@ import {
   refreshIndex,
   search,
   type BulkIndexAction,
-} from "../../vector_db/client.js";
-import { getLogger } from "../../utils/logger.js";
+} from "../../vector_db/client";
+import { getLogger } from "../../utils/logger";
 
 const logger = getLogger("indexing.opensearch_index");
 

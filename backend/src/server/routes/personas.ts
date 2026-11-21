@@ -15,11 +15,11 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { getLogger } from "../../utils/logger.js";
-import { InvalidRequestError } from "../../utils/errors.js";
-import { getAuthContext } from "./chat.js";
-import { query, queryOne } from "../../db/client.js";
-import type { User } from "../../types/domain.js";
+import { getLogger } from "../../utils/logger";
+import { InvalidRequestError } from "../../utils/errors";
+import { getAuthContext } from "./chat";
+import { query, queryOne } from "../../db/client";
+import type { User } from "../../types/domain";
 
 const logger = getLogger("routes.persona");
 

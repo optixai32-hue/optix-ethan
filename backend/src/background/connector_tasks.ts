@@ -5,9 +5,9 @@
  * (task_creation_utils.py builds + applies the docfetching task). The
  * handlers live in tasks.ts; this module is the producer-facing wrapper.
  */
-import { enqueueTask, TaskPriority } from "./tasks.js";
+import { enqueueTask, TaskPriority } from "./tasks";
 
-export { TASK_REGISTRY, registerBuiltInTasks, registerTask, TaskPriority } from "./tasks.js";
+export { TASK_REGISTRY, registerBuiltInTasks, registerTask, TaskPriority } from "./tasks";
 
 /** Port of docfetching/task_creation_utils: queue one connector sync. */
 export async function enqueueConnectorSync(

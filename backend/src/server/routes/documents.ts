@@ -13,11 +13,11 @@
  */
 import { Hono } from "hono";
 import { z } from "zod";
-import { query, queryOne } from "../../db/client.js";
-import { runIndexingPipeline } from "../../indexing/pipeline.js";
-import { deleteDocumentChunks, ensureDocumentIndex } from "../../indexing/document_index/opensearch_index.js";
-import { InvalidRequestError, NotFoundError } from "../../utils/errors.js";
-import { getLogger } from "../../utils/logger.js";
+import { query, queryOne } from "../../db/client";
+import { runIndexingPipeline } from "../../indexing/pipeline";
+import { deleteDocumentChunks, ensureDocumentIndex } from "../../indexing/document_index/opensearch_index";
+import { InvalidRequestError, NotFoundError } from "../../utils/errors";
+import { getLogger } from "../../utils/logger";
 import { randomUUID } from "node:crypto";
 
 const logger = getLogger("server.routes.documents");

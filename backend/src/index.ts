@@ -6,11 +6,11 @@
  * The Hono app itself lives in src/server/app.ts so the Vercel serverless
  * entry (api/[...path].ts) can mount the identical surface on Node.
  */
-import { API_PORT } from "./configs/constants.js";
-import { getLogger } from "./utils/logger.js";
-import { runMigrations } from "./db/migrations/runner.js";
-import { app } from "./server/app.js";
-import { ensureDevPresetLlmProvider } from "./llm/setup.js";
+import { API_PORT } from "./configs/constants";
+import { getLogger } from "./utils/logger";
+import { runMigrations } from "./db/migrations/runner";
+import { app } from "./server/app";
+import { ensureDevPresetLlmProvider } from "./llm/setup";
 
 const logger = getLogger("api.server");
 

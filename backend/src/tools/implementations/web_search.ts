@@ -19,10 +19,10 @@
  * removing the tool from the registry).
  */
 
-import { getZaiClient } from "../../llm/providers/zai.js";
-import type { Tool, ToolContext, ToolResponse } from "../interface.js";
-import type { SearchDoc } from "../../types/domain.js";
-import { getLogger } from "../../utils/logger.js";
+import { getZaiClient } from "../../llm/providers/zai";
+import type { Tool, ToolContext, ToolResponse } from "../interface";
+import type { SearchDoc } from "../../types/domain";
+import { getLogger } from "../../utils/logger";
 
 const logger = getLogger("tools.web_search");
 

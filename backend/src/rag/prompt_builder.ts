@@ -16,7 +16,7 @@
  *     grouping behavior, lines 66-134).
  */
 
-import type { SearchDoc } from "../types/domain.js";
+import type { SearchDoc } from "../types/domain";
 
 /** Verbatim port of REQUIRE_CITATION_GUIDANCE (onyx/prompts/chat_prompts.py). */
 const REQUIRE_CITATION_GUIDANCE = `

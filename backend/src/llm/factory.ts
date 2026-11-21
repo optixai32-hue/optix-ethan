@@ -15,11 +15,11 @@
  * lazily at call time, so construction never blocks.
  */
 
-import type { LLMProvider } from "./types.js";
-import { DEFAULT_FAST_MODEL, DEFAULT_LLM_PROVIDER, OPENAI_MODEL } from "../configs/constants.js";
-import { getLogger } from "../utils/logger.js";
-import { ZaiProvider } from "./providers/zai.js";
-import { OpenaiCompatProvider } from "./providers/openai_compat.js";
+import type { LLMProvider } from "./types";
+import { DEFAULT_FAST_MODEL, DEFAULT_LLM_PROVIDER, OPENAI_MODEL } from "../configs/constants";
+import { getLogger } from "../utils/logger";
+import { ZaiProvider } from "./providers/zai";
+import { OpenaiCompatProvider } from "./providers/openai_compat";
 
 const logger = getLogger("llm.factory");
 

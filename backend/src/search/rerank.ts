@@ -10,9 +10,9 @@
  * unavailability, malformed JSON, timeout — returns the original ranking
  * unchanged; reranking NEVER crashes the search flow.
  */
-import type { SearchDoc } from "../types/domain.js";
-import { getLLMProvider } from "../llm/factory.js";
-import { getLogger } from "../utils/logger.js";
+import type { SearchDoc } from "../types/domain";
+import { getLLMProvider } from "../llm/factory";
+import { getLogger } from "../utils/logger";
 
 const logger = getLogger("search.rerank");
 

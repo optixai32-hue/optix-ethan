@@ -18,8 +18,8 @@
 import { mkdir, readdir, rm, writeFile, readFile } from "node:fs/promises";
 import type { Dirent } from "node:fs";
 import { dirname, join, normalize, resolve, sep } from "node:path";
-import { FILE_STORE_DIR } from "../configs/constants.js";
-import { getLogger } from "../utils/logger.js";
+import { FILE_STORE_DIR } from "../configs/constants";
+import { getLogger } from "../utils/logger";
 
 const logger = getLogger("storage.file_store");
 

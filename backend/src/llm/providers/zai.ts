@@ -37,9 +37,9 @@ import type {
   LLMStreamEvent,
   LLMToolCall,
   LLMToolSpec,
-} from "../types.js";
-import { getLogger } from "../../utils/logger.js";
-import { LLMGenerationError } from "../../utils/errors.js";
+} from "../types";
+import { getLogger } from "../../utils/logger";
+import { LLMGenerationError } from "../../utils/errors";
 
 const logger = getLogger("llm.zai");
 

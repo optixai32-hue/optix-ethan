@@ -10,9 +10,9 @@
  * the applied-set is re-read inside the lock — mirroring alembic's own
  * take-a-lock-before-upgrade behavior.
  */
-import { getDb } from "../client.js";
-import { IS_SERVERLESS_SHARED_DB } from "../../configs/constants.js";
-import { getLogger } from "../../utils/logger.js";
+import { getDb } from "../client";
+import { IS_SERVERLESS_SHARED_DB } from "../../configs/constants";
+import { getLogger } from "../../utils/logger";
 
 export interface MigrationVersion {
   /** unique short id, e.g. "0001" — ordering is by array position */
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS onyx_schema_versions (
 const MIGRATION_LOCK_KEY = 74123901;
 
 export async function runMigrations(): Promise<void> {
-  const { MIGRATIONS } = await import("./versions.js");
+  const { MIGRATIONS } = await import("./versions");
   const client = await getDb().connect();
   try {
     await client.query(CREATE_VERSION_TABLE);

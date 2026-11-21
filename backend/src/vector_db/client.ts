@@ -16,8 +16,8 @@ import {
   OPENSEARCH_HOST,
   OPENSEARCH_PASSWORD,
   OPENSEARCH_USERNAME,
-} from "../configs/constants.js";
-import { getLogger } from "../utils/logger.js";
+} from "../configs/constants";
+import { getLogger } from "../utils/logger";
 
 const logger = getLogger("vector_db.client");
 
