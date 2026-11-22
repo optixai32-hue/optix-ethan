@@ -579,4 +579,42 @@ CREATE TABLE IF NOT EXISTS build_message (
 ALTER TABLE build_message ADD COLUMN IF NOT EXISTS message_metadata JSONB NULL;
 `,
   },
+  {
+    id: "0013",
+    name: "Craft tables: replace legacy bb13b8a-era shapes with the v5.1.3 craft surface shapes",
+    sql: `
+-- The pre-revert cloud-parity implementation registered its own "0012" on
+-- shared production databases with a DIFFERENT build-table shape (build_turn
+-- / build_artifact rows, build_message.type instead of role, TEXT ids, no
+-- updated_at on build_session). Because the version id is already recorded,
+-- the runner skips this repo's 0012 there and the current surface queries
+-- columns that do not exist (500s on /build/*). Legacy tables are empty on
+-- production (craft never served traffic), so replace them outright. On
+-- fresh databases 0012 already created the same shapes — this is a no-op.
+DROP TABLE IF EXISTS build_artifact;
+DROP TABLE IF EXISTS build_turn;
+DROP TABLE IF EXISTS build_message;
+DROP TABLE IF EXISTS build_session;
+
+CREATE TABLE IF NOT EXISTS build_session (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID REFERENCES onyx_user(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL DEFAULT 'New Build',
+  status      TEXT NOT NULL DEFAULT 'ready',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS build_message (
+  id         SERIAL PRIMARY KEY,
+  session_id UUID REFERENCES build_session(id) ON DELETE CASCADE,
+  role       TEXT NOT NULL CHECK (role IN ('user','assistant')),
+  content    TEXT NOT NULL,
+  turn_id    INTEGER NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE build_message ADD COLUMN IF NOT EXISTS message_metadata JSONB NULL;
+`,
+  },
 ];
