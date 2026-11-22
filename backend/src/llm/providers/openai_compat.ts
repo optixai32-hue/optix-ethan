@@ -48,6 +48,10 @@ interface OpenAiStreamChunk {
   choices?: Array<{
     delta?: {
       content?: string | null;
+      // Reasoning-model deltas (DeepSeek-style `reasoning_content`,
+      // OpenRouter/NVIDIA-style `reasoning`). Emitted before the answer text.
+      reasoning?: string | null;
+      reasoning_content?: string | null;
       tool_calls?: Array<{
         index?: number | null;
         id?: string | null;
@@ -238,6 +242,8 @@ export class OpenaiCompatProvider implements LLMProvider {
           }
           const choice = chunk.choices?.[0];
           const delta = choice?.delta;
+          const reasoning = delta?.reasoning ?? delta?.reasoning_content;
+          if (reasoning) yield { reasoning };
           const text = contentOf(delta);
           if (text) yield { delta: text };
           if (delta?.tool_calls) {

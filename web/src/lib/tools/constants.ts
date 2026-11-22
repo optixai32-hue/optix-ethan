@@ -52,10 +52,9 @@ export const ADMIN_CONFIG_LINKS: Record<
     href: ADMIN_ROUTES.IMAGE_GENERATION.path,
     tooltip: "Configure Image Generation",
   },
-  [WEB_SEARCH_TOOL_ID]: {
-    href: ADMIN_ROUTES.WEB_SEARCH.path,
-    tooltip: "Configure Web Search",
-  },
+  // NOTE: Web Search has no admin configuration anymore — the tool is
+  // hardwired to its single fixed search endpoint (product decision), so
+  // there is deliberately no ADMIN_ROUTES.WEB_SEARCH page/link.
   [PYTHON_TOOL_ID]: {
     href: ADMIN_ROUTES.CODE_INTERPRETER.path,
     tooltip: "Configure Code Interpreter",

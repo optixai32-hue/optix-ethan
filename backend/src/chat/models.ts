@@ -52,6 +52,9 @@ export interface Packet {
   packet: string;
   /** Index of the user message (turn) this packet belongs to. */
   ind: number;
+  /** Parallel-tab index within the turn (upstream placement.tab_index
+   * semantics: parallel tool calls share the turn with distinct tabs). */
+  tab?: number;
   /** Packet type — a StreamingType value. */
   type: PacketType;
   /** Plain payload for simple packets (deltas, error text, final answer). */

@@ -32,6 +32,10 @@ export interface LLMRequestOpts {
 
 export interface LLMStreamEvent {
   delta?: string;
+  /** Reasoning/thinking token delta (OpenAI-compatible `reasoning` /
+   * `reasoning_content` fields; emitted by reasoning models such as the Kilo
+   * gateway's nvidia/nemotron-3-ultra). Runs BEFORE the answer deltas. */
+  reasoning?: string;
   tool_calls?: LLMToolCall[];
   finish_reason?: string | null;
   done?: boolean;

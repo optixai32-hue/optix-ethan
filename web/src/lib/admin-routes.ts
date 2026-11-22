@@ -118,16 +118,6 @@ export const ADMIN_ROUTES = {
     visibleWhen: null,
     beta: true,
   },
-  WEB_SEARCH: {
-    path: "/admin/web-search",
-    icon: SvgGlobe,
-    title: "Web Search",
-    sidebarLabel: "Web Search",
-    requiredPermission: Permission.FULL_ADMIN_PANEL_ACCESS,
-    section: "",
-    requiredTier: null,
-    visibleWhen: null,
-  },
   IMAGE_GENERATION: {
     path: "/admin/image-generation",
     icon: SvgImage,

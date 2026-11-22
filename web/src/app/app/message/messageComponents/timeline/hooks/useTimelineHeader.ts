@@ -8,7 +8,6 @@ import {
   CustomToolStart,
 } from "@/app/app/services/streamingModels";
 import {
-  formatSearchHeader,
   constructCurrentSearchState,
 } from "@/app/app/message/messageComponents/timeline/renderers/search/searchStateUtils";
 
@@ -71,20 +70,19 @@ export function useTimelineHeader(
       const searchState = constructCurrentSearchState(
         currentStep.packets as SearchToolPacket[]
       );
-      let headerText: string;
-      if (searchState.hasResults && !searchState.isInternetSearch) {
-        headerText = t("header.reading.label");
-      } else if (searchState.isInternetSearch) {
-        headerText = t("header.searchingWeb.label");
-      } else {
-        headerText = formatSearchHeader(
-          searchState.sourceFilters,
-          searchState.timeFilter,
-          t,
-          locale
-        );
+      if (searchState.isInternetSearch) {
+        // Web search stays visible: "Searching the web".
+        return {
+          headerText: t("header.searchingWeb.label"),
+          hasPackets,
+          userStopped,
+        };
       }
-      return { headerText, hasPackets, userStopped };
+      // PRODUCT DECISION: internal document search is not displayed (the
+      // "Searching internal documents"/"Reading" step is removed everywhere).
+      // The retrieval happens silently on the backend, so the header keeps
+      // the generic thinking state while it runs.
+      return { headerText: thinkingHeader, hasPackets, userStopped };
     }
 
     if (packetType === PacketType.FETCH_TOOL_START) {

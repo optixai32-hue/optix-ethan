@@ -98,7 +98,7 @@ function sseFrame(packet: Packet): string {
 function ndjsonFrame(packet: Packet): string {
   const placement = {
     turn_index: packet.ind ?? 0,
-    tab_index: 0,
+    tab_index: packet.tab ?? 0,
     sub_turn_index: null,
     model_index: 0,
   };
@@ -161,6 +161,19 @@ function ndjsonFrame(packet: Packet): string {
       );
     case "chat_heartbeat":
       return JSON.stringify({ placement, obj: { type: "chat_heartbeat" } }) + "\n";
+    case "reasoning_start":
+      // ReasoningStart (streaming_models.py): thinking-phase opener — renders
+      // as the collapsible "Thinking" timeline step (ReasoningRenderer).
+      return JSON.stringify({ placement, obj: { type: "reasoning_start" } }) + "\n";
+    case "reasoning_delta":
+      return (
+        JSON.stringify({
+          placement,
+          obj: { type: "reasoning_delta", reasoning: packet.message ?? "" },
+        }) + "\n"
+      );
+    case "reasoning_done":
+      return JSON.stringify({ placement, obj: { type: "reasoning_done" } }) + "\n";
     case "error":
       // StreamingError is a bare (unwrapped) AnswerStreamPart
       return (
@@ -360,8 +373,10 @@ export async function processMessage(
           // Tool context factory — shared by the automatic retrieval step and
           // the in-loop tool executions below. `turn` is the llm_cycle_count of
           // the original placement semantics (llm_loop.py: tool packets carry
-          // the turn of the LLM step that called them).
-          const makeToolContext = (turn: number) => ({
+          // the turn of the LLM step that called them) and `tab` the parallel
+          // tab within that turn (tab 0 is reserved for the reasoning group,
+          // so each tool call renders as its own parallel step).
+          const makeToolContext = (turn: number, tab = 0) => ({
             userId: opts.user.user.id,
             chatSessionId: session.id,
             emit: (packetType: string, message: string): void => {
@@ -386,7 +401,7 @@ export async function processMessage(
                 }
               }
               // Forward tool progress to the user stream as a packet.
-              emitter.sendRaw(packetType, turn, message);
+              emitter.sendRaw(packetType, turn, message, tab);
             },
           });
 
@@ -430,11 +445,30 @@ export async function processMessage(
             // the final step, agent.py _prepare_step).
             const offerTools = step < MAX_AGENT_STEPS - 1;
 
+            // Placement turn for this LLM cycle (llm_loop.py:1125 —
+            // turn_index = llm_cycle_count + reasoning_cycles). The retrieval
+            // step consumed cycle 0, so agent-loop step N runs at turn N + 1;
+            // tools called from this step share its turn.
+            const cycleTurn = step + 1;
+
             stepBuffer = new StreamBuffer();
+            let reasoningStarted = false;
             for await (const event of provider.stream(llmMessages, {
               ...(offerTools ? { tools: toolSpecs } : {}),
               signal: runAbort.signal,
             })) {
+              if (event.reasoning) {
+                // Reasoning tokens stream BEFORE the answer. They live in
+                // their own packet group (the cycle's turn) so the frontend
+                // renders the collapsible "Thinking" step; when the step is
+                // the final one the answer is shifted one turn down to keep
+                // the two groups disjoint (turn indices are ordered).
+                if (!reasoningStarted) {
+                  emitter.sendObject("reasoning_start", cycleTurn, {});
+                  reasoningStarted = true;
+                }
+                emitter.send("reasoning_delta", cycleTurn, event.reasoning);
+              }
               if (event.delta) stepBuffer.processToken(event.delta);
               if (event.tool_calls) {
                 for (const fragment of event.tool_calls) {
@@ -454,13 +488,15 @@ export async function processMessage(
                 break;
               }
             }
+            if (reasoningStarted) {
+              emitter.sendObject("reasoning_done", cycleTurn, {});
+            }
 
             const toolCalls = stepBuffer.getToolCalls().filter((c) => c.name);
-            // Placement turn for this LLM cycle (llm_loop.py:1125 —
-            // turn_index = llm_cycle_count + reasoning_cycles). The retrieval
-            // step consumed cycle 0, so agent-loop step N runs at turn N + 1;
-            // tools called from this step share its turn.
-            const cycleTurn = step + 1;
+            // The answer's placement turn: same cycle turn unless this step
+            // streamed reasoning (that group owns cycleTurn — shift the answer
+            // one turn down so both render as separate timeline steps).
+            const answerTurn = reasoningStarted ? cycleTurn + 1 : cycleTurn;
 
             if (toolCalls.length > 0 && offerTools) {
               inMemory.push({
@@ -471,19 +507,23 @@ export async function processMessage(
               let callIndex = 0;
               for (const call of toolCalls) {
                 const toolCallId = call.id || `${call.name}-${callIndex}`;
+                // Parallel-tab placement: each tool call of this cycle gets
+                // its own tab so parallel tool steps render side by side
+                // (tab 0 stays reserved for the step's reasoning group).
+                const toolTab = callIndex + 1;
                 callIndex += 1;
                 emitter.sendObject("tool_call_debug", cycleTurn, {
                   tool_call_id: toolCallId,
                   tool_name: call.name,
                   tool_args: parseToolArguments(call.arguments),
-                });
+                }, "", toolTab);
 
                 const tool = toolById.get(call.name) ?? getTool(call.name);
                 let content: string;
                 if (!tool) {
                   content = `Error: unknown tool "${call.name}". Available tools: ${tools.map((t) => t.name).join(", ")}.`;
                 } else {
-                  const toolContext = makeToolContext(cycleTurn);
+                  const toolContext = makeToolContext(cycleTurn, toolTab);
                   try {
                     const result = await tool.run(
                       parseToolArguments(call.arguments),
@@ -516,7 +556,7 @@ export async function processMessage(
 
             // AgentResponseStart (streaming_models.py): only final_documents
             // and pre_answer_processing_seconds — no id/content fields.
-            emitter.sendObject("agent_response_start", cycleTurn, {
+            emitter.sendObject("agent_response_start", answerTurn, {
               final_documents: gatheredDocs.map(toSavedSearchDoc),
               pre_answer_processing_seconds:
                 Math.round(((Date.now() - turnStartedAt) / 1000) * 100) / 100,
@@ -527,17 +567,17 @@ export async function processMessage(
             for (const delta of stepBuffer.getDeltas()) {
               for (const item of processor.processToken(delta)) {
                 if (typeof item === "string") {
-                  if (item) emitter.send("agent_response_delta", cycleTurn, item);
+                  if (item) emitter.send("agent_response_delta", answerTurn, item);
                 } else {
-                  emitCitationInfo(emitter, item, cycleTurn);
+                  emitCitationInfo(emitter, item, answerTurn);
                 }
               }
             }
             for (const item of processor.processToken(null)) {
               if (typeof item === "string") {
-                if (item) emitter.send("agent_response_delta", cycleTurn, item);
+                if (item) emitter.send("agent_response_delta", answerTurn, item);
               } else {
-                emitCitationInfo(emitter, item, cycleTurn);
+                emitCitationInfo(emitter, item, answerTurn);
               }
             }
 

@@ -38,7 +38,6 @@ import { ProjectFile } from "@/lib/projects/types";
 import { isFilePending } from "@/lib/projects/utils";
 import FilePickerPopover from "@/refresh-components/popovers/FilePickerPopover";
 import { ToolsPopover } from "@/lib/tools/components";
-import MCPConnectionPrompt from "@/lib/mcp/components/MCPConnectionPrompt";
 import {
   getIconForAction,
   hasSearchToolsAvailable,
@@ -693,16 +692,10 @@ const AppInputBar = React.memo(
               )
             )}
 
-            {!isSearchMode && !controlsLoading && activeAgent && (
-              <MCPConnectionPrompt
-                key={`mcp-auth-${activeAgent.id}`}
-                isStreaming={chatState === "streaming"}
-                agent={activeAgent}
-                toolConfiguration={toolConfiguration}
-                disabled={disabled}
-                onConnectionsClosed={() => inputRef.current?.focus()}
-              />
-            )}
+            {/* NOTE: the MCP "Tools need credentials" connection prompt was
+                removed by product decision — the plugin catalog is fully
+                pre-connected via the Manage actions popover, so the chat
+                input must never surface a credentials gate. */}
 
             {(() => {
               if (!activeAgent || forcedToolId === null) return null;

@@ -1,7 +1,7 @@
 import type { Route } from "next";
 import { OnboardingStep } from "@/interfaces/onboarding";
 import { ADMIN_ROUTES } from "@/lib/admin-routes";
-import { SvgGlobe, SvgImage, SvgUsers } from "@opal/icons";
+import { SvgImage, SvgUsers } from "@opal/icons";
 import type { IconFunctionComponent } from "@opal/types";
 
 // Modules cannot call hooks, so the configs below hold message keys (inside the
@@ -67,13 +67,6 @@ export type FinalSetupItemConfig = {
 };
 
 export const FINAL_SETUP_CONFIG = [
-  {
-    titleKey: "finalStep.webSearch.title",
-    descriptionKey: "finalStep.webSearch.description",
-    icon: SvgGlobe,
-    buttonTextKey: "finalStep.webSearch.button.label",
-    buttonHref: ADMIN_ROUTES.WEB_SEARCH.path,
-  },
   {
     titleKey: "finalStep.imageGeneration.title",
     descriptionKey: "finalStep.imageGeneration.description",

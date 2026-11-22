@@ -46,25 +46,26 @@ export class StreamEmitter {
   /**
    * Emit a simple (message-carrying) packet. Port of the classic emitter's
    * simple-string path: `packet` stays empty, `message` carries the payload.
+   * `tab` carries the parallel-tab placement (upstream tab_index).
    */
-  send(type: PacketType, ind: number, message: string): Packet {
-    return this.publish(type, ind, message, "");
+  send(type: PacketType, ind: number, message: string, tab = 0): Packet {
+    return this.publish(type, ind, message, "", tab);
   }
 
   /**
    * Emit with a free-form type string — used to forward tool progress packet
    * types that arrive through the ToolContext.emit contract.
    */
-  sendRaw(type: string, ind: number, message: string): Packet {
-    return this.publish(type as PacketType, ind, message, "");
+  sendRaw(type: string, ind: number, message: string, tab = 0): Packet {
+    return this.publish(type as PacketType, ind, message, "", tab);
   }
 
   /**
    * Emit a structured packet: the payload object is JSON-serialized into the
    * `packet` field (port of the classic `Packet(packet=obj.model_dump_json())`).
    */
-  sendObject(type: PacketType, ind: number, obj: unknown, message = ""): Packet {
-    return this.publish(type, ind, message, JSON.stringify(obj));
+  sendObject(type: PacketType, ind: number, obj: unknown, message = "", tab = 0): Packet {
+    return this.publish(type, ind, message, JSON.stringify(obj), tab);
   }
 
   /** Port of StreamingError semantics from streaming_models.py. */
@@ -91,12 +92,14 @@ export class StreamEmitter {
     ind: number,
     message: string,
     packetJson: string,
+    tab = 0,
   ): Packet {
     this.seq += 1;
     const packet: Packet = {
       seq: this.seq,
       packet: packetJson,
       ind,
+      ...(tab !== 0 ? { tab } : {}),
       type,
       message,
     };
