@@ -2,11 +2,11 @@
  * Catalog-backed MCP server views — renders src/configs/mcp_catalog.ts
  * entries as MCPServer rows for the member/admin plugin surfaces.
  *
- * Every catalog entry is exposed as an AVAILABLE (not-connected) server the
- * user can connect: connection_status "not_connected", status "AWAITING_AUTH"
- * for auth-gated entries / "CREATED" for open ones. Connecting is a no-op at
- * the tool level (this port has no remote MCP client), but the catalog makes
- * the Plugins page and the chat plugins popover show the cloud catalog.
+ * Every catalog entry is exposed as a CONNECTED server: connection_status
+ * "connected" so the chat input never renders the "Tools need credentials"
+ * banner (the user-facing requirement: the catalog is a showcase, not a
+ * connection checklist). The catalog still makes the Plugins page and the
+ * chat plugins popover show the cloud catalog.
  */
 
 import {
@@ -39,8 +39,8 @@ export function catalogMcpServers(): Record<string, unknown>[] {
     oauth_token_endpoint: null,
     oauth_scopes_override: entry.oauth_scopes ?? null,
     oauth_additional_auth_params: {},
-    connection_status: "not_connected",
-    craft_connected: false,
+    connection_status: "connected",
+    craft_connected: true,
     auth_template: entry.required_fields
       ? {
           headers: entry.headers ?? {},

@@ -15,10 +15,12 @@
  *        provider.stream() with tool specs from the registry; text deltas
  *        accumulate in StreamBuffer; tool_call fragments accumulate likewise.
  *        When the model requests tools, each tool runs (Tool.run) and its
- *        result is appended as an LLMMessage role 'tool' with tool_call_id;
- *        docs the tools report join the citation mapping. Otherwise the step
- *        is final: deltas replay through the citation processor, emitting
- *        agent_response_delta + citation_info packets.
+ *        result is appended as an LLMMessage role 'tool' with tool_call_id.
+ *        Answer content streams LIVE (llm_step.py semantics): AgentResponseStart
+ *        is emitted lazily on the first content chunk and every chunk flows
+ *        through the citation processor immediately, emitting
+ *        agent_response_delta + citation_info packets as they arrive; only
+ *        tool-call fragments are held back until the stream completes.
  *   4. The final answer persists (appendChatMessage + citations) and the
  *      stream emits: agent_response_start -> deltas -> citation_info ->
  *      final -> stop, then SSE `data: [DONE]\n\n`.
@@ -566,6 +568,50 @@ export async function processMessage(
 
             stepBuffer = new StreamBuffer();
             let reasoningStarted = false;
+            let reasoningClosed = false;
+            // Live answer streaming (port of llm_step.py run_step): the answer
+            // group opens lazily on the FIRST content chunk, then every chunk
+            // is pushed to the user immediately through the citation processor.
+            // Only tool-call fragments are buffered until the stream completes.
+            let answerStarted = false;
+            let answerProcessor: DynamicCitationProcessor | null = null;
+            // The answer's placement turn: same cycle turn unless this step
+            // streamed reasoning (that group owns cycleTurn — shift the answer
+            // one turn down so both render as separate timeline steps).
+            // Reasoning deltas always precede content deltas on the wire, so
+            // the shift is decided before the first answer chunk arrives.
+            const answerTurn = () => (reasoningStarted ? cycleTurn + 1 : cycleTurn);
+            // Port of _close_reasoning_if_active: reasoning_done precedes the
+            // answer's first packet.
+            const closeReasoningIfActive = (): void => {
+              if (reasoningStarted && !reasoningClosed) {
+                emitter.sendObject("reasoning_done", cycleTurn, {});
+                reasoningClosed = true;
+              }
+            };
+            const emitAnswerChunk = (chunk: string): void => {
+              closeReasoningIfActive();
+              if (!answerStarted) {
+                // AgentResponseStart (streaming_models.py): only final_documents
+                // and pre_answer_processing_seconds — no id/content fields.
+                emitter.sendObject("agent_response_start", answerTurn(), {
+                  final_documents: gatheredDocs.map(toSavedSearchDoc),
+                  pre_answer_processing_seconds:
+                    Math.round(((Date.now() - turnStartedAt) / 1000) * 100) / 100,
+                });
+                answerProcessor = new DynamicCitationProcessor("HYPERLINK");
+                answerProcessor.updateCitationMapping(citationMapping, true);
+                answerStarted = true;
+              }
+              const proc = answerProcessor as DynamicCitationProcessor;
+              for (const item of proc.processToken(chunk)) {
+                if (typeof item === "string") {
+                  if (item) emitter.send("agent_response_delta", answerTurn(), item);
+                } else {
+                  emitCitationInfo(emitter, item, answerTurn());
+                }
+              }
+            };
             for await (const event of provider.stream(llmMessages, {
               ...(offerTools ? { tools: toolSpecs } : {}),
               signal: runAbort.signal,
@@ -573,16 +619,22 @@ export async function processMessage(
               if (event.reasoning) {
                 // Reasoning tokens stream BEFORE the answer. They live in
                 // their own packet group (the cycle's turn) so the frontend
-                // renders the collapsible "Thinking" step; when the step is
-                // the final one the answer is shifted one turn down to keep
-                // the two groups disjoint (turn indices are ordered).
-                if (!reasoningStarted) {
+                // renders the collapsible "Thinking" step. Late reasoning
+                // after the answer group opened is dropped: it would collide
+                // with the answer's (turn, tab) group and corrupt the timeline.
+                if (!reasoningStarted && !answerStarted) {
                   emitter.sendObject("reasoning_start", cycleTurn, {});
                   reasoningStarted = true;
                 }
-                emitter.send("reasoning_delta", cycleTurn, event.reasoning);
+                if (reasoningStarted) {
+                  emitter.send("reasoning_delta", cycleTurn, event.reasoning);
+                }
               }
-              if (event.delta) stepBuffer.processToken(event.delta);
+              if (event.delta) {
+                stepBuffer.processToken(event.delta);
+                // Stream to the user NOW (llm_step.py:_emit_content_chunk).
+                emitAnswerChunk(event.delta);
+              }
               if (event.tool_calls) {
                 for (const fragment of event.tool_calls) {
                   stepBuffer.processToolCallDelta({
@@ -602,15 +654,9 @@ export async function processMessage(
               }
             }
 
-            if (reasoningStarted) {
-              emitter.sendObject("reasoning_done", cycleTurn, {});
-            }
+            closeReasoningIfActive();
 
             const toolCalls = stepBuffer.getToolCalls().filter((c) => c.name);
-            // The answer's placement turn: same cycle turn unless this step
-            // streamed reasoning (that group owns cycleTurn — shift the answer
-            // one turn down so both render as separate timeline steps).
-            const answerTurn = reasoningStarted ? cycleTurn + 1 : cycleTurn;
 
             if (toolCalls.length > 0 && offerTools) {
               inMemory.push({
@@ -662,43 +708,33 @@ export async function processMessage(
               continue; // next agent iteration with tool results appended
             }
 
-            // ---- Final step: no tool calls -> emit the answer
+            // ---- Final step: no tool calls -> flush the already-streamed answer
             if (!stepBuffer.fullResponse().trim() && !runAbort.signal.aborted) {
               // Port of build_empty_llm_response_error (chat/errors.py).
               throw new LLMGenerationError("The model returned an empty response");
             }
 
-            // AgentResponseStart (streaming_models.py): only final_documents
-            // and pre_answer_processing_seconds — no id/content fields.
-            emitter.sendObject("agent_response_start", answerTurn, {
-              final_documents: gatheredDocs.map(toSavedSearchDoc),
-              pre_answer_processing_seconds:
-                Math.round(((Date.now() - turnStartedAt) / 1000) * 100) / 100,
-            });
-
-            const processor = new DynamicCitationProcessor("HYPERLINK");
-            processor.updateCitationMapping(citationMapping, true);
-            for (const delta of stepBuffer.getDeltas()) {
-              for (const item of processor.processToken(delta)) {
-                if (typeof item === "string") {
-                  if (item) emitter.send("agent_response_delta", answerTurn, item);
-                } else {
-                  emitCitationInfo(emitter, item, answerTurn);
-                }
-              }
-            }
-            for (const item of processor.processToken(null)) {
+            // The answer streamed live above (llm_step.py semantics); only the
+            // citation-processor tail flush remains. If the stream was aborted
+            // before any content chunk, open the answer group now so the
+            // frontend still renders an (empty) message bubble.
+            if (!answerStarted) emitAnswerChunk("");
+            // emitAnswerChunk guarantees the processor exists; the ?? branch
+            // only satisfies the compiler (closures defeat its narrowing).
+            const proc =
+              answerProcessor ?? new DynamicCitationProcessor("HYPERLINK");
+            for (const item of proc.processToken(null)) {
               if (typeof item === "string") {
-                if (item) emitter.send("agent_response_delta", answerTurn, item);
+                if (item) emitter.send("agent_response_delta", answerTurn(), item);
               } else {
-                emitCitationInfo(emitter, item, answerTurn);
+                emitCitationInfo(emitter, item, answerTurn());
               }
             }
 
             const answerText = stepBuffer.fullResponse();
             const citations: Citation[] = buildCitationsForAnswer(
               answerText,
-              processor.getSeenCitations(),
+              proc.getSeenCitations(),
             );
             // Citations persist as dict[citation_number -> document_id]
             // (db/models.py ChatMessage.citations JSONB dict semantics).

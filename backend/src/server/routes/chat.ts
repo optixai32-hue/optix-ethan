@@ -249,15 +249,73 @@ interface ResolvedLlmSelection {
 }
 
 /**
+ * Parse the frontend's structured session-model string persisted by
+ * update-chat-session-model (current_alternate_model):
+ *   "<display_name>__<provider>__<model_name>" optionally suffixed
+ *   "__mc:<model_configuration_id>" (lib/languageModels/utils.ts structureValue).
+ * Model names may themselves contain "__", so only the leading two segments
+ * are consumed and the "mc:" marker disambiguates the id suffix.
+ */
+function parseStructuredModelValue(
+  raw: string,
+): {
+  name: string;
+  provider: string;
+  modelName: string;
+  modelConfigurationId: number | null;
+} | null {
+  if (!raw || !raw.includes("__")) return null;
+  const parts = raw.split("__");
+  if (parts.length < 3) return null;
+  const last = parts[parts.length - 1];
+  let modelConfigurationId: number | null = null;
+  let modelNameParts = parts.slice(2);
+  if (last.startsWith("mc:")) {
+    const id = Number(last.slice(3));
+    if (Number.isInteger(id) && id > 0) modelConfigurationId = id;
+    modelNameParts = parts.slice(2, -1);
+  }
+  return {
+    name: parts[0],
+    provider: parts[1],
+    modelName: modelNameParts.join("__"),
+    modelConfigurationId,
+  };
+}
+
+/**
  * Resolve a per-request LLMOverride (frontend lib.tsx sendMessage payload)
  * into the (providerId, modelName) pair threaded into processMessage.
  * Priority: explicit model_configuration_id (DB row joined with its provider)
  * > model_provider + model_version > model_version alone. Mirrors the
  * handle_send_chat_message flow's ModelConfigurationOverride resolution.
+ *
+ * Robustness: when model_configuration_id points at a row that no longer
+ * exists (stale page state after a DB reseed), resolution FALLS THROUGH to
+ * model_provider + model_version instead of silently resetting to the
+ * deployment default — a failed lookup must never lose the user's explicit
+ * model selection.
  */
 async function resolveLlmOverride(override: LLMOverride | null | undefined): Promise<ResolvedLlmSelection> {
   if (!override || typeof override !== "object") return {};
-  if (override.model_configuration_id != null) {
+
+  let modelProvider = override.model_provider ?? undefined;
+  let modelVersion = override.model_version ?? undefined;
+  let modelConfigurationId = override.model_configuration_id ?? undefined;
+
+  // model_version may carry the frontend's structured descriptor string
+  // (update-chat-session-model stores structureValue(...) verbatim) — parse
+  // it into its parts and use them as the base for this override.
+  if (modelVersion) {
+    const structured = parseStructuredModelValue(modelVersion);
+    if (structured) {
+      modelProvider = modelProvider || structured.provider || structured.name;
+      modelVersion = structured.modelName || modelVersion;
+      modelConfigurationId = modelConfigurationId ?? structured.modelConfigurationId ?? undefined;
+    }
+  }
+
+  if (modelConfigurationId != null) {
     const row = await queryOne<{
       model_name: string;
       provider: string;
@@ -268,7 +326,7 @@ async function resolveLlmOverride(override: LLMOverride | null | undefined): Pro
          FROM model_configuration mc
          JOIN llm_provider lp ON lp.id = mc.llm_provider_id
         WHERE mc.id = $1`,
-      [override.model_configuration_id],
+      [modelConfigurationId],
     );
     if (row) {
       return {
@@ -276,7 +334,9 @@ async function resolveLlmOverride(override: LLMOverride | null | undefined): Pro
         llmModelName: row.model_name,
       };
     }
-    return {};
+    logger.warning("llm_override model_configuration_id not found; falling back to provider/model fields", {
+      model_configuration_id: modelConfigurationId,
+    });
   }
   // model_provider may be either the provider column id ("kilo",
   // "openai-compatible") or the admin-facing display NAME — the original
@@ -285,8 +345,8 @@ async function resolveLlmOverride(override: LLMOverride | null | undefined): Pro
   // provider rows can share one display name (e.g. a retired duplicate).
   // Resolve names through the DB, preferring the default row when several
   // providers share the display name; column ids pass through unchanged.
-  let providerId = override.model_provider
-    ? normalizeProviderId(override.model_provider)
+  let providerId = modelProvider
+    ? normalizeProviderId(modelProvider)
     : undefined;
   if (providerId) {
     const byName = await queryOne<{ provider: string }>(
@@ -302,7 +362,9 @@ async function resolveLlmOverride(override: LLMOverride | null | undefined): Pro
   }
   return {
     ...(providerId ? { llmProviderId: providerId } : {}),
-    ...(override.model_version ? { llmModelName: override.model_version } : {}),
+    // The frontend uses "default" as the placeholder model version; the
+    // factory treats it the same way, so drop it here as well.
+    ...(modelVersion && modelVersion !== "default" ? { llmModelName: modelVersion } : {}),
   };
 }
 
@@ -833,6 +895,12 @@ chatRoutes.post("/send-chat-message", async (c) => {
     }
   }
   const llmSelection = await resolveLlmOverride(mergedOverride);
+  logger.info("send-chat-message llm selection", {
+    chat_session_id: chatSessionId,
+    provider: llmSelection.llmProviderId ?? "(default)",
+    model: llmSelection.llmModelName ?? "(default)",
+    override_source: body.llm_override ? "request" : "session",
+  });
 
   const stream = await processMessage({
     user: auth,
