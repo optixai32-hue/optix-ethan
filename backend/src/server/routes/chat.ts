@@ -26,18 +26,18 @@ import { createHash } from "node:crypto";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
-import { query, queryOne } from "../../db/client.js";
-import { SESSION_COOKIE_NAME } from "../../configs/constants.js";
-import type { AuthContext, User } from "../../types/domain.js";
-import { getLogger } from "../../utils/logger.js";
+import { query, queryOne } from "../../db/client";
+import { SESSION_COOKIE_NAME } from "../../configs/constants";
+import type { AuthContext, User } from "../../types/domain";
+import { getLogger } from "../../utils/logger";
 import {
   ForbiddenError,
   InvalidMessageExceptionError,
   InvalidRequestError,
   UnauthorizedError,
   UnsupportedFeatureError,
-} from "../../utils/errors.js";
-import { processMessage } from "../../chat/process_message.js";
+} from "../../utils/errors";
+import { processMessage } from "../../chat/process_message";
 import {
   createChatSession,
   deleteChatSession,
@@ -46,9 +46,9 @@ import {
   getChatSession,
   getFallbackChatSessionName,
   listChatSessions,
-} from "../../chat/persistence.js";
-import { getDefaultPersona, getPersona } from "../../agents/personas.js";
-import { registerBuiltInTools } from "../../tools/built_in_tools.js";
+} from "../../chat/persistence";
+import { getDefaultPersona, getPersona } from "../../agents/personas";
+import { registerBuiltInTools } from "../../tools/built_in_tools";
 
 const logger = getLogger("routes.chat");
 

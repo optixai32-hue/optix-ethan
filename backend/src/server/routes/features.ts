@@ -21,9 +21,9 @@
  *   - GET /chat/incognito-availability -> bool
  */
 import { Hono } from "hono";
-import { query } from "../../db/client.js";
-import { requireAuth } from "../../auth/middleware.js";
-import { catalogMcpServers } from "./mcp_catalog_view.js";
+import { query } from "../../db/client";
+import { requireAuth } from "../../auth/middleware";
+import { catalogMcpServers } from "./mcp_catalog_view";
 
 export const featuresRoutes = new Hono();
 

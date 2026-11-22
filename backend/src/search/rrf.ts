@@ -12,8 +12,8 @@
  *  - sort by fused score desc, tiebreak by best rank within a source list,
  *    then by source index (round-robin fairness across queries)
  */
-import type { SearchDoc } from "../types/domain.js";
-import { RRF_K } from "../configs/constants.js";
+import type { SearchDoc } from "../types/domain";
+import { RRF_K } from "../configs/constants";
 
 function chunkKey(doc: SearchDoc): string {
   return `${doc.document_id}#${doc.chunk_id}`;

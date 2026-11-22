@@ -3,9 +3,9 @@
  * LLM provider seeding (equivalent of the Bun entry's main() preamble).
  * Idempotent — migrations are IF NOT EXISTS based and seeding checks the table.
  */
-import { getLogger } from "../utils/logger.js";
-import { runMigrations } from "../db/migrations/runner.js";
-import { ensureDevPresetLlmProvider, ensureKiloProvider } from "../llm/setup.js";
+import { getLogger } from "../utils/logger";
+import { runMigrations } from "../db/migrations/runner";
+import { ensureDevPresetLlmProvider, ensureKiloProvider } from "../llm/setup";
 
 const logger = getLogger("api.vercel");
 

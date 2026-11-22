@@ -17,10 +17,10 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { getAuth, requireAuth } from "../../auth/middleware.js";
-import { getZaiClient } from "../../llm/providers/zai.js";
-import { query, queryOne } from "../../db/client.js";
-import { getLogger } from "../../utils/logger.js";
+import { getAuth, requireAuth } from "../../auth/middleware";
+import { getZaiClient } from "../../llm/providers/zai";
+import { query, queryOne } from "../../db/client";
+import { getLogger } from "../../utils/logger";
 
 const logger = getLogger("server.routes.voice");
 

@@ -16,10 +16,10 @@
  * loop, which writes the final cited answer (process_message.ts).
  */
 
-import { getLogger } from "../utils/logger.js";
-import type { LLMMessage, LLMProvider } from "../llm/types.js";
-import type { SearchDoc } from "../types/domain.js";
-import type { StreamEmitter } from "./emitter.js";
+import { getLogger } from "../utils/logger";
+import type { LLMMessage, LLMProvider } from "../llm/types";
+import type { SearchDoc } from "../types/domain";
+import type { StreamEmitter } from "./emitter";
 
 const logger = getLogger("chat.deep_research");
 

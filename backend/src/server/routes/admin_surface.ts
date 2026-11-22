@@ -26,14 +26,14 @@
  *   - onyx/server/documents/connector.py    POST /manage/admin/connector/indexing-status
  */
 import { Hono } from "hono";
-import { requireAdmin, requireAuth } from "../../auth/middleware.js";
-import { query, queryOne } from "../../db/client.js";
+import { requireAdmin, requireAuth } from "../../auth/middleware";
+import { query, queryOne } from "../../db/client";
 import {
   INDEXING_EMBEDDING_DIM,
   INDEXING_EMBEDDING_MODEL,
-} from "../../configs/constants.js";
-import { getLogger } from "../../utils/logger.js";
-import { catalogMcpServers } from "./mcp_catalog_view.js";
+} from "../../configs/constants";
+import { getLogger } from "../../utils/logger";
+import { catalogMcpServers } from "./mcp_catalog_view";
 
 const logger = getLogger("server.routes.admin_surface");
 

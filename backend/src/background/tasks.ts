@@ -25,12 +25,12 @@
  * status queued|running|complete|failed) — the DB-backed celery broker
  * replacement claimed by background/scheduler.ts with FOR UPDATE SKIP LOCKED.
  */
-import { query, queryOne } from "../db/client.js";
-import { getLogger } from "../utils/logger.js";
-import { buildConnectorRunner } from "../connectors/factory.js";
-import { saveState } from "../connectors/framework.js";
-import { runIndexingPipeline } from "../indexing/pipeline.js";
-import type { ConnectorDoc, SlimDocMetadata } from "../types/domain.js";
+import { query, queryOne } from "../db/client";
+import { getLogger } from "../utils/logger";
+import { buildConnectorRunner } from "../connectors/factory";
+import { saveState } from "../connectors/framework";
+import { runIndexingPipeline } from "../indexing/pipeline";
+import type { ConnectorDoc, SlimDocMetadata } from "../types/domain";
 
 const logger = getLogger("background.tasks");
 

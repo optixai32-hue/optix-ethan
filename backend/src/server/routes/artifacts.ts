@@ -24,10 +24,10 @@ import {
   listArtifacts,
   updateArtifact,
   type ArtifactPatch,
-} from "../../craft/artifacts.js";
-import { InvalidRequestError } from "../../utils/errors.js";
-import { getLogger } from "../../utils/logger.js";
-import { requireUser } from "./connectors.js";
+} from "../../craft/artifacts";
+import { InvalidRequestError } from "../../utils/errors";
+import { getLogger } from "../../utils/logger";
+import { requireUser } from "./connectors";
 
 const logger = getLogger("server.routes.artifacts");
 

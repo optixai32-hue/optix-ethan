@@ -10,8 +10,8 @@
  * OpenSearch + redis stack; Lite-mode profiles are excluded from this port).
  */
 import { Hono } from "hono";
-import { query } from "../../db/client.js";
-import { getLogger } from "../../utils/logger.js";
+import { query } from "../../db/client";
+import { getLogger } from "../../utils/logger";
 
 const logger = getLogger("routes.health");
 

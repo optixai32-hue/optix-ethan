@@ -35,10 +35,10 @@
  * zero cents; likes/dislikes are always 0. Response SHAPES are exact.
  */
 import { Hono, type Context } from "hono";
-import { getAuth, requireAdmin, requireAuth } from "../../auth/middleware.js";
-import { query, queryOne } from "../../db/client.js";
-import { NotFoundError } from "../../utils/errors.js";
-import { getLogger } from "../../utils/logger.js";
+import { getAuth, requireAdmin, requireAuth } from "../../auth/middleware";
+import { query, queryOne } from "../../db/client";
+import { NotFoundError } from "../../utils/errors";
+import { getLogger } from "../../utils/logger";
 
 const logger = getLogger("server.routes.analytics");
 

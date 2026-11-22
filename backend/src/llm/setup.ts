@@ -11,19 +11,19 @@
  * entirely when any provider row already exists (admin-managed state wins),
  * mirroring the fetch_default_model(...) is None guard.
  */
-import { query, queryOne } from "../db/client.js";
-import { getLogger } from "../utils/logger.js";
+import { query, queryOne } from "../db/client";
+import { getLogger } from "../utils/logger";
 import {
   DEFAULT_LLM_PROVIDER,
   DEFAULT_STRONG_MODEL,
-} from "../configs/constants.js";
+} from "../configs/constants";
 import {
   KILO_DEFAULT_MODEL_NAME,
   KILO_MODELS,
   KILO_PROVIDER_ID,
   type KiloModel,
-} from "./kilo_models.js";
-import { resolveKiloGatewayBase } from "./providers/kilo.js";
+} from "./kilo_models";
+import { resolveKiloGatewayBase } from "./providers/kilo";
 
 const logger = getLogger("setup.llm");
 

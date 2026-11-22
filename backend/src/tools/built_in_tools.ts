@@ -8,10 +8,10 @@
  * module load or per-request is safe.
  */
 
-import { getTool, registerTool } from "./registry.js";
-import { searchTool } from "./implementations/search_tool.js";
-import { webSearchTool } from "./implementations/web_search.js";
-import { imageGenTool } from "./implementations/image_gen.js";
+import { getTool, registerTool } from "./registry";
+import { searchTool } from "./implementations/search_tool";
+import { webSearchTool } from "./implementations/web_search";
+import { imageGenTool } from "./implementations/image_gen";
 
 /** Register the built-in tools exactly once each. */
 export function registerBuiltInTools(): void {

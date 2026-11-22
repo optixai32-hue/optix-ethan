@@ -19,21 +19,21 @@
  */
 import { Hono, type Context } from "hono";
 import { randomBytes } from "node:crypto";
-import { getAuth, requireAdmin, requireAuth } from "../../auth/middleware.js";
+import { getAuth, requireAdmin, requireAuth } from "../../auth/middleware";
 import {
   adminCapabilities,
   getEffectivePermissions,
   Permission,
-} from "../../auth/permissions.js";
-import { hashPassword } from "../../auth/password.js";
+} from "../../auth/permissions";
+import { hashPassword } from "../../auth/password";
 import {
   createUser,
   getUserByEmail,
   recomputeUserPermissions,
-} from "../../auth/users.js";
-import { query, queryOne, withTransaction } from "../../db/client.js";
-import { InvalidRequestError } from "../../utils/errors.js";
-import type { User } from "../../types/domain.js";
+} from "../../auth/users";
+import { query, queryOne, withTransaction } from "../../db/client";
+import { InvalidRequestError } from "../../utils/errors";
+import type { User } from "../../types/domain";
 
 export const manageUsersRoutes = new Hono();
 

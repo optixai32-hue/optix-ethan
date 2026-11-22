@@ -15,8 +15,8 @@
  * populate both layers. invalidateNamespace deletes every namespaced key in
  * Redis and clears the local layer. Redis failures are logged, never thrown.
  */
-import { kvDelete, kvGet, kvKeys, kvSet } from "../key_value_store/redis_compat.js";
-import { getLogger } from "../utils/logger.js";
+import { kvDelete, kvGet, kvKeys, kvSet } from "../key_value_store/redis_compat";
+import { getLogger } from "../utils/logger";
 
 const logger = getLogger("cache.generic_cache");
 

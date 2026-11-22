@@ -4,11 +4,11 @@
  * queue (celery + redis broker replacement) and runs the recurring scheduler
  * (celerybeat replacement).
  */
-import { WORKER_CONCURRENCY, SCHEDULER_INTERVAL_MS } from "./configs/constants.js";
-import { getLogger } from "./utils/logger.js";
-import { runMigrations } from "./db/migrations/runner.js";
-import { startWorkerLoop } from "./background/scheduler.js";
-import { registerBuiltInTasks } from "./background/tasks.js";
+import { WORKER_CONCURRENCY, SCHEDULER_INTERVAL_MS } from "./configs/constants";
+import { getLogger } from "./utils/logger";
+import { runMigrations } from "./db/migrations/runner";
+import { startWorkerLoop } from "./background/scheduler";
+import { registerBuiltInTasks } from "./background/tasks";
 
 const logger = getLogger("background.worker");
 

@@ -18,10 +18,10 @@
  * The registry lives here (not in framework.ts) to avoid an import cycle:
  * framework.ts must stay dependency-light because implementations import it.
  */
-import type { ConnectorFactory } from "./framework.js";
-import { UnsupportedFeatureError } from "../utils/errors.js";
-import { FileConnectorRunner } from "./implementations/file.js";
-import { WebConnectorRunner } from "./implementations/web.js";
+import type { ConnectorFactory } from "./framework";
+import { UnsupportedFeatureError } from "../utils/errors";
+import { FileConnectorRunner } from "./implementations/file";
+import { WebConnectorRunner } from "./implementations/web";
 
 /**
  * Port of registry.CONNECTOR_CLASS_MAP restricted to ported sources.

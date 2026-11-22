@@ -12,7 +12,7 @@
  * background task work — see docs/PORT_MAP.md.
  */
 import { Hono } from "hono";
-import { getAuth, requireAuth } from "../../auth/middleware.js";
+import { getAuth, requireAuth } from "../../auth/middleware";
 
 export const notificationsRoutes = new Hono();
 

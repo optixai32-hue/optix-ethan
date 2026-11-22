@@ -80,18 +80,18 @@ import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
-import { query, queryOne } from "../../db/client.js";
-import { getAuth, requireAuth } from "../../auth/middleware.js";
-import type { User } from "../../types/domain.js";
-import { getLogger } from "../../utils/logger.js";
+import { query, queryOne } from "../../db/client";
+import { getAuth, requireAuth } from "../../auth/middleware";
+import type { User } from "../../types/domain";
+import { getLogger } from "../../utils/logger";
 import {
   InvalidRequestError,
   NotFoundError,
   UnauthorizedError,
   UnsupportedFeatureError,
-} from "../../utils/errors.js";
-import { getLLMProvider } from "../../llm/factory.js";
-import type { LLMMessage, LLMStreamEvent } from "../../llm/types.js";
+} from "../../utils/errors";
+import { getLLMProvider } from "../../llm/factory";
+import type { LLMMessage, LLMStreamEvent } from "../../llm/types";
 
 const logger = getLogger("server.routes.build");
 

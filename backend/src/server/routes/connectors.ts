@@ -27,14 +27,14 @@
 import { Hono, type Context } from "hono";
 import { getCookie } from "hono/cookie";
 import { z } from "zod";
-import { query, queryOne } from "../../db/client.js";
-import { getSessionUser } from "../../auth/sessions.js";
-import { SESSION_COOKIE_NAME, VALID_SOURCE_TYPES } from "../../configs/constants.js";
-import { ForbiddenError, InvalidRequestError, NotFoundError, UnauthorizedError } from "../../utils/errors.js";
-import { getLogger } from "../../utils/logger.js";
-import { enqueueTask, TaskPriority } from "../../background/tasks.js";
-import { CONNECTOR_FACTORIES } from "../../connectors/factory.js";
-import type { User } from "../../types/domain.js";
+import { query, queryOne } from "../../db/client";
+import { getSessionUser } from "../../auth/sessions";
+import { SESSION_COOKIE_NAME, VALID_SOURCE_TYPES } from "../../configs/constants";
+import { ForbiddenError, InvalidRequestError, NotFoundError, UnauthorizedError } from "../../utils/errors";
+import { getLogger } from "../../utils/logger";
+import { enqueueTask, TaskPriority } from "../../background/tasks";
+import { CONNECTOR_FACTORIES } from "../../connectors/factory";
+import type { User } from "../../types/domain";
 
 const logger = getLogger("server.routes.connectors");
 

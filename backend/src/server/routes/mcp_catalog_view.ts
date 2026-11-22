@@ -13,7 +13,7 @@ import {
   MCP_PLUGIN_CATALOG,
   catalogServerId,
   type CatalogMcpServer,
-} from "../../configs/mcp_catalog.js";
+} from "../../configs/mcp_catalog";
 
 function authType(entry: CatalogMcpServer): string {
   if (entry.auth === "oauth") return "OAUTH";

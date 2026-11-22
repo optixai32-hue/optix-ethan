@@ -20,14 +20,14 @@
  */
 import { Hono } from "hono";
 import { z } from "zod";
-import { query, queryOne } from "../../db/client.js";
-import { getAuth, requireAuth, requireAdmin } from "../../auth/middleware.js";
-import { InvalidRequestError, NotFoundError } from "../../utils/errors.js";
-import { getLogger } from "../../utils/logger.js";
+import { query, queryOne } from "../../db/client";
+import { getAuth, requireAuth, requireAdmin } from "../../auth/middleware";
+import { InvalidRequestError, NotFoundError } from "../../utils/errors";
+import { getLogger } from "../../utils/logger";
 import {
   KILO_DEFAULT_MODEL_NAME,
   KILO_MODELS,
-} from "../../llm/kilo_models.js";
+} from "../../llm/kilo_models";
 
 const logger = getLogger("routes.llm");
 

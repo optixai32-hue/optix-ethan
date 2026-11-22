@@ -16,7 +16,7 @@
  * Column names are snake_case and MUST match src/types/domain.ts interfaces.
  * Onyx Lite is out of scope: no DISABLE_VECTOR_DB / CACHE_BACKEND=postgres concepts here.
  */
-import type { MigrationVersion } from "./runner.js";
+import type { MigrationVersion } from "./runner";
 
 const INITIAL_STANDARD_SCHEMA = `
 -- gen_random_uuid() is a core PostgreSQL 13+ function (no pgcrypto needed).

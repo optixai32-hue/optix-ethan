@@ -18,7 +18,7 @@
  * one Citation per unique document, ordered by first citation appearance.
  */
 
-import type { Citation, SearchDoc } from "../types/domain.js";
+import type { Citation, SearchDoc } from "../types/domain";
 
 export type CitationMode = "REMOVE" | "KEEP_MARKERS" | "HYPERLINK";
 
