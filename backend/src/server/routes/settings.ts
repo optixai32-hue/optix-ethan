@@ -13,8 +13,8 @@
  * allow_anonymous=True) — anonymous users disabled here, so 401 otherwise).
  */
 import { Hono } from "hono";
-import { getAuth, requireAuth } from "../../auth/middleware";
-import { SETTINGS_DEFAULTS } from "../../configs/constants";
+import { getAuth, requireAuth } from "../../auth/middleware.js";
+import { SETTINGS_DEFAULTS } from "../../configs/constants.js";
 
 export const settingsRoutes = new Hono();
 

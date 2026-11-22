@@ -10,7 +10,7 @@
  * original shapes. Requires authentication (member / READ_CHAT gate).
  */
 import { Hono } from "hono";
-import { getAuthContext } from "./chat";
+import { getAuthContext } from "./chat.js";
 
 export const integrationsRoutes = new Hono();
 

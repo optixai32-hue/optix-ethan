@@ -17,21 +17,21 @@
  * the SearchDoc.chunk_id <-> chunk.id contract) -> bulk index to OpenSearch.
  * Index attempt rows are updated when an indexAttemptId is supplied.
  */
-import type { ConnectorDoc } from "../types/domain";
-import { query, withTransaction } from "../db/client";
+import type { ConnectorDoc } from "../types/domain.js";
+import { query, withTransaction } from "../db/client.js";
 import {
   DEFAULT_CHUNK_OVERLAP,
   DEFAULT_CHUNK_SIZE,
-} from "../configs/constants";
-import { chunkSectionsWithLinks } from "./chunker";
-import { embedTexts } from "./embeddings";
+} from "../configs/constants.js";
+import { chunkSectionsWithLinks } from "./chunker.js";
+import { embedTexts } from "./embeddings.js";
 import {
   bulkIndexChunks,
   deleteDocumentChunks,
   ensureDocumentIndex,
   type ChunkForIndex,
-} from "./document_index/opensearch_index";
-import { getLogger } from "../utils/logger";
+} from "./document_index/opensearch_index.js";
+import { getLogger } from "../utils/logger.js";
 
 const logger = getLogger("indexing.pipeline");
 

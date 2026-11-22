@@ -14,11 +14,11 @@
  * the same observable behavior: opaque cookie value, fixed lifetime, expiry check
  * on every read, delete on logout, periodic purge of expired rows.
  */
-import { query, queryOne } from "../db/client";
-import { rowToUser, rowToUserSession } from "../db/models/rows";
-import { SESSION_EXPIRY_HOURS } from "../configs/constants";
-import { getLogger } from "../utils/logger";
-import type { User, UserSession } from "../types/domain";
+import { query, queryOne } from "../db/client.js";
+import { rowToUser, rowToUserSession } from "../db/models/rows.js";
+import { SESSION_EXPIRY_HOURS } from "../configs/constants.js";
+import { getLogger } from "../utils/logger.js";
+import type { User, UserSession } from "../types/domain.js";
 
 const logger = getLogger("auth.sessions");
 

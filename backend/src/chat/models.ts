@@ -43,7 +43,16 @@ export type PacketType =
   | "tool_call_argument_delta"
   | "reasoning_start"
   | "reasoning_delta"
-  | "reasoning_done";
+  | "reasoning_done"
+  // Deep Research (streaming_models.py DeepResearchPlan/ResearchAgent packets;
+  // consumed by web/src/app/app/message/messageComponents/timeline/packetHelpers.ts
+  // and renderMessageComponent.tsx)
+  | "deep_research_plan_start"
+  | "deep_research_plan_delta"
+  | "research_agent_start"
+  | "intermediate_report_start"
+  | "intermediate_report_delta"
+  | "intermediate_report_cited_docs";
 
 export interface Packet {
   /** Sequence number of the packet in the stream (1-based). */
@@ -52,13 +61,13 @@ export interface Packet {
   packet: string;
   /** Index of the user message (turn) this packet belongs to. */
   ind: number;
-  /** Parallel-tab index within the turn (upstream placement.tab_index
-   * semantics: parallel tool calls share the turn with distinct tabs). */
-  tab?: number;
   /** Packet type — a StreamingType value. */
   type: PacketType;
   /** Plain payload for simple packets (deltas, error text, final answer). */
   message: string;
+  /** Parallel-tab index within the turn (upstream placement.tab_index
+   * semantics: parallel tool calls share the turn with distinct tabs). */
+  tab?: number;
 }
 
 /** Citation metadata that travels with citation_info packets. */

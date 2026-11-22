@@ -15,14 +15,34 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { getLogger } from "../../utils/logger";
-import { InvalidRequestError } from "../../utils/errors";
-import { getAuthContext } from "./chat";
-import { builtinToolSnapshots } from "./tools";
-import { query, queryOne } from "../../db/client";
-import type { User } from "../../types/domain";
+import { getLogger } from "../../utils/logger.js";
+import { InvalidRequestError } from "../../utils/errors.js";
+import { registerBuiltInTools } from "../../tools/built_in_tools.js";
+import { builtinToolSnapshots } from "./tools.js";
+import { getAuthContext } from "./chat.js";
+import { query, queryOne } from "../../db/client.js";
+import type { User } from "../../types/domain.js";
 
 const logger = getLogger("routes.persona");
+
+try {
+  registerBuiltInTools();
+} catch (err) {
+  logger.warning("built-in tool registration failed", { error: String(err) });
+}
+
+/** Built-in tools attached to the default assistant (persona 0).
+ *  Mirrors upstream behavior where the default assistant has the built-in
+ *  tool set attached (SearchTool / WebSearchTool / ImageGenerationTool) via
+ *  persona__tool; the frontend uses these to drive the Deep Research toggle
+ *  (hasSearchToolsAvailable) and the tools affordances. */
+function personaTools(): Record<string, unknown>[] {
+  try {
+    return builtinToolSnapshots();
+  } catch {
+    return [];
+  }
+}
 
 type PersonaListRow = {
   id: number;
@@ -49,20 +69,6 @@ const PERSONA_COLUMNS = `id, name, description, system_prompt, is_public,
 
 function isAdmin(user: User): boolean {
   return user.role === "admin";
-}
-
-/** Built-in tools attached to the default assistant (persona 0).
- *  Mirrors upstream behavior where the default assistant has the built-in
- *  tool set attached (SearchTool / WebSearchTool / ImageGenerationTool) via
- *  persona__tool; the frontend uses these to drive the Deep Research toggle
- *  (hasSearchToolsAvailable), the Manage-actions popover and the Plugins
- *  catalog. */
-function personaTools(): Record<string, unknown>[] {
-  try {
-    return builtinToolSnapshots();
-  } catch {
-    return [];
-  }
 }
 
 /**

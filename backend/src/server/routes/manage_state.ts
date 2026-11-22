@@ -12,9 +12,9 @@
  * default_language (workspace settings default: "en").
  */
 import { Hono } from "hono";
-import { queryOne } from "../../db/client";
-import { AUTH_CONFIG, SETTINGS_DEFAULTS } from "../../configs/constants";
-import { getLogger } from "../../utils/logger";
+import { queryOne } from "../../db/client.js";
+import { AUTH_CONFIG, SETTINGS_DEFAULTS } from "../../configs/constants.js";
+import { getLogger } from "../../utils/logger.js";
 
 const logger = getLogger("routes.manage_state");
 

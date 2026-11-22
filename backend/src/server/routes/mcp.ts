@@ -19,12 +19,12 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { getLogger } from "../../utils/logger";
-import { InvalidRequestError, NotFoundError } from "../../utils/errors";
-import { getTool, listTools } from "../../tools/registry";
-import { registerBuiltInTools } from "../../tools/built_in_tools";
-import type { ToolContext } from "../../tools/interface";
-import { getAuthContext } from "./chat";
+import { getLogger } from "../../utils/logger.js";
+import { InvalidRequestError, NotFoundError } from "../../utils/errors.js";
+import { getTool, listTools } from "../../tools/registry.js";
+import { registerBuiltInTools } from "../../tools/built_in_tools.js";
+import type { ToolContext } from "../../tools/interface.js";
+import { getAuthContext } from "./chat.js";
 
 const logger = getLogger("routes.mcp");
 

@@ -18,11 +18,11 @@
  * key is returned exactly once on creation (ApiKeyDescriptor.api_key).
  */
 import { createHash, randomBytes } from "node:crypto";
-import { query, queryOne } from "../db/client";
-import { rowToApiKey, rowToUser } from "../db/models/rows";
-import { getLogger } from "../utils/logger";
-import { NotFoundError } from "../utils/errors";
-import type { ApiKey, AuthContext } from "../types/domain";
+import { query, queryOne } from "../db/client.js";
+import { rowToApiKey, rowToUser } from "../db/models/rows.js";
+import { getLogger } from "../utils/logger.js";
+import { NotFoundError } from "../utils/errors.js";
+import type { ApiKey, AuthContext } from "../types/domain.js";
 
 const logger = getLogger("auth.api_keys");
 

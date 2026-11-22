@@ -11,19 +11,19 @@
  * entirely when any provider row already exists (admin-managed state wins),
  * mirroring the fetch_default_model(...) is None guard.
  */
-import { query, queryOne } from "../db/client";
-import { getLogger } from "../utils/logger";
+import { query, queryOne } from "../db/client.js";
+import { getLogger } from "../utils/logger.js";
 import {
   DEFAULT_LLM_PROVIDER,
   DEFAULT_STRONG_MODEL,
-} from "../configs/constants";
+} from "../configs/constants.js";
 import {
-  KILO_PROVIDER_ID,
   KILO_DEFAULT_MODEL_NAME,
   KILO_MODELS,
+  KILO_PROVIDER_ID,
   type KiloModel,
-} from "./kilo_models";
-import { resolveKiloGatewayBase } from "./providers/kilo";
+} from "./kilo_models.js";
+import { resolveKiloGatewayBase } from "./providers/kilo.js";
 
 const logger = getLogger("setup.llm");
 
@@ -88,11 +88,6 @@ export async function ensureDevPresetLlmProvider(): Promise<void> {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Kilo Gateway provider bootstrap (added provider — no upstream setup.py
-// counterpart; follows the ensureDevPresetLlmProvider seeding pattern).
-// ---------------------------------------------------------------------------
-
 interface SeedProviderRow {
   id: number;
 }
@@ -126,8 +121,8 @@ async function insertKiloModelConfigurations(
  * The provider row stores api_key NULL (runtime auth is resolved from
  * KILO_GATEWAY_API_KEY / ONYX_OPENAI_API_KEY env at call time by
  * llm/providers/kilo.ts) and api_base equal to the provider class's base
- * resolution. is_default stays false — the default provider row keeps the
- * default slot.
+ * resolution. is_default=true: the Kilo gateway is this deployment's default
+ * chat provider (see the UPDATE below).
  */
 export async function ensureKiloProvider(): Promise<void> {
   const existing = await queryOne<SeedProviderRow>(
@@ -143,23 +138,28 @@ export async function ensureKiloProvider(): Promise<void> {
     );
     const presentNames = new Set(present.rows.map((row) => row.name));
     const missing = KILO_MODELS.filter((model) => !presentNames.has(model.name));
-    if (missing.length === 0) {
-      logger.debug("kilo gateway provider fully seeded; skipping");
-      return;
+    if (missing.length > 0) {
+      await insertKiloModelConfigurations(existing.id, missing);
+      logger.info("backfilled missing kilo gateway model configurations", {
+        models: missing.map((model) => model.name),
+      });
     }
-    await insertKiloModelConfigurations(existing.id, missing);
-    logger.info("backfilled missing kilo gateway model configurations", {
-      models: missing.map((model) => model.name),
-    });
+    // The Kilo gateway is this deployment's chat gateway: make it the default
+    // provider on every boot (idempotent). Retired/duplicate rows created by
+    // earlier admin seeds (e.g. a same-named openai-compatible row pointing at
+    // a rate-limited model) lose the default slot, so chat never falls back to
+    // a dead default model.
+    await query(
+      `UPDATE llm_provider SET is_default = (provider = $1)`,
+      [KILO_PROVIDER_ID],
+    );
     return;
   }
 
   const inserted = await queryOne<SeedProviderRow>(
-    // Column set matches this repo's llm_provider schema (no api_version /
-    // deployment_name columns in the ported DDL).
-    `INSERT INTO llm_provider (name, provider, api_key, api_base,
-                               default_model_name, is_default)
-     VALUES ($1, $2, NULL, $3, $4, false)
+    `INSERT INTO llm_provider (name, provider, api_key, api_base, api_version,
+                               deployment_name, default_model_name, is_default)
+     VALUES ($1, $2, NULL, $3, NULL, NULL, $4, true)
      RETURNING id`,
     ["Kilo Gateway", KILO_PROVIDER_ID, resolveKiloGatewayBase(), KILO_DEFAULT_MODEL_NAME],
   );
@@ -167,6 +167,12 @@ export async function ensureKiloProvider(): Promise<void> {
     logger.warning("failed to seed kilo gateway llm provider");
     return;
   }
+
+  // Exactly one default provider: the freshly seeded Kilo gateway.
+  await query(
+    `UPDATE llm_provider SET is_default = (id = $1)`,
+    [inserted.id],
+  );
 
   await insertKiloModelConfigurations(inserted.id, KILO_MODELS);
   logger.info("seeded kilo gateway llm provider", {

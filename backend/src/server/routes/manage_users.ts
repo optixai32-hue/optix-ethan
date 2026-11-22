@@ -10,16 +10,30 @@
  * - personalization is persisted on onyx_user (personal_name, personal_role,
  *   use_memories, enable_memory_tool, user_preferences) + memory table
  *   (db/models.py User.440-446, Memory.585).
+ *
+ * Also hosts the EE user-management surface (server/manage/users.py): the admin
+ * listings (/manage/users, /manage/users/accepted/all, /manage/users/invited,
+ * /manage/users/download, /manage/users/counts), the user mutations
+ * (activate/deactivate/delete/admin-access/invite) and the admin password
+ * reset — request/response shapes follow web/src/views/admin/UsersPage/svc.ts.
  */
-import { Hono } from "hono";
-import { getAuth, requireAuth } from "../../auth/middleware";
+import { Hono, type Context } from "hono";
+import { randomBytes } from "node:crypto";
+import { getAuth, requireAdmin, requireAuth } from "../../auth/middleware.js";
 import {
   adminCapabilities,
   getEffectivePermissions,
   Permission,
-} from "../../auth/permissions";
-import { query, queryOne } from "../../db/client";
-import type { User } from "../../types/domain";
+} from "../../auth/permissions.js";
+import { hashPassword } from "../../auth/password.js";
+import {
+  createUser,
+  getUserByEmail,
+  recomputeUserPermissions,
+} from "../../auth/users.js";
+import { query, queryOne, withTransaction } from "../../db/client.js";
+import { InvalidRequestError } from "../../utils/errors.js";
+import type { User } from "../../types/domain.js";
 
 export const manageUsersRoutes = new Hono();
 
@@ -226,6 +240,57 @@ manageUsersRoutes.patch("/user/pinned-assistants", requireAuth, async (c) => {
   return c.json(null);
 });
 
+// PATCH /user/default-model — port of server/manage/users.py
+// set_user_default_model_api (web/src/lib/users/svc.ts setUserDefaultModel ->
+// PATCH /api/user/default-model {default_model}). The value is the
+// "<provider_id>::<model_configuration_id>" descriptor string the frontend
+// parses (getValidLlmDescriptorForProviders) or null to reset.
+manageUsersRoutes.patch("/user/default-model", requireAuth, async (c) => {
+  const auth = getAuth(c);
+  if (!auth) {
+    return c.json({ detail: "Unauthorized" }, 401);
+  }
+  const body = (await c.req.json().catch(() => ({}))) as {
+    default_model?: unknown;
+  };
+  const value = body.default_model === null ? null : typeof body.default_model === "string" ? body.default_model : null;
+  const prefRow = await queryOne<{ preferences: Record<string, unknown> | null }>(
+    `SELECT preferences FROM onyx_user WHERE id = $1`,
+    [auth.user.id],
+  );
+  const merged = { ...(prefRow?.preferences ?? {}), default_model: value };
+  await query(
+    `UPDATE onyx_user SET preferences = $2::jsonb, updated_at = now() WHERE id = $1`,
+    [auth.user.id, JSON.stringify(merged)],
+  );
+  return c.json(null);
+});
+
+// PATCH /user/default-app-mode — port of server/manage/users.py
+// set_user_default_app_mode_api (web/src/providers/UserProvider.tsx
+// updateUserDefaultAppMode -> PATCH /api/user/default-app-mode
+// {default_app_mode: "CHAT" | "SEARCH"}).
+manageUsersRoutes.patch("/user/default-app-mode", requireAuth, async (c) => {
+  const auth = getAuth(c);
+  if (!auth) {
+    return c.json({ detail: "Unauthorized" }, 401);
+  }
+  const body = (await c.req.json().catch(() => ({}))) as {
+    default_app_mode?: unknown;
+  };
+  const mode = body.default_app_mode === "SEARCH" ? "SEARCH" : "CHAT";
+  const prefRow = await queryOne<{ preferences: Record<string, unknown> | null }>(
+    `SELECT preferences FROM onyx_user WHERE id = $1`,
+    [auth.user.id],
+  );
+  const merged = { ...(prefRow?.preferences ?? {}), default_app_mode: mode };
+  await query(
+    `UPDATE onyx_user SET preferences = $2::jsonb, updated_at = now() WHERE id = $1`,
+    [auth.user.id, JSON.stringify(merged)],
+  );
+  return c.json(null);
+});
+
 // GET /user/assistant/preferences — port of server/manage/users.py
 // get_user_assistant_preferences: dict<assistant_id,
 // {disabled_tool_ids, disabled_integration_ids}>. Fresh deployment: {}.
@@ -234,15 +299,26 @@ manageUsersRoutes.get("/user/assistant/preferences", requireAuth, (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// EE: users admin listing (port of server/manage/users.py user management
-// read surface). The web frontend hits:
+// EE: users admin listing + administration (port of server/manage/users.py user
+// management read/mutation surface). The web frontend hits:
 //   - GET /manage/users?include_api_keys=true  -> AllUsersResponse
 //     (web/src/lib/types.ts AllUsersResponse; rows follow FullUserSnapshot in
 //      web/src/views/admin/UsersPage/types.ts — the group create/edit pages
 //      build their member picker from this, including group managers who only
 //      hold the scoped READ_USERS permission)
+//   - GET /manage/users/accepted/all           -> FullUserSnapshot[]
+//     (web/src/hooks/useAdminUsers.ts on SWR_KEYS.acceptedUsers — admin-only)
+//   - GET /manage/users/invited                -> InvitedUserSnapshot[]
+//     ({email}[]; admin-only; no invite flow in this port, always [])
+//   - GET /manage/users/download               -> users CSV (admin-only)
 //   - GET /manage/users/counts                 -> status/account-type tallies
 //     (web/src/hooks/useUserCounts.ts UserCountsResponse)
+//   - PATCH /manage/admin/deactivate-user / activate-user, DELETE
+//     /manage/admin/delete-user, PATCH /manage/admin/users/admin-access,
+//     PUT /manage/admin/users (invite), PATCH /manage/admin/remove-invited-user
+//     (all admin-only; bodies per web/src/views/admin/UsersPage/svc.ts)
+//   - POST /password/reset_password            -> { user_id, new_password }
+//   - GET /tenants/users/pending               -> InvitedUserSnapshot[] (always [])
 // ---------------------------------------------------------------------------
 
 /** Port of the READ_USERS gate: admins, curators and group managers pass. */
@@ -278,19 +354,14 @@ interface ApiKeyRow {
   created_at: Date | null;
 }
 
-manageUsersRoutes.get("/manage/users", requireAuth, async (c) => {
-  const auth = getAuth(c);
-  if (!auth) {
-    return c.json({ detail: "Unauthorized" }, 401);
-  }
-  if (!canListUsers(auth.user)) {
-    return c.json(
-      { detail: "You do not have permission to perform this action" },
-      403,
-    );
-  }
-  const includeApiKeys = c.req.query("include_api_keys") === "true";
+interface AdminUserList {
+  users: UserAdminRow[];
+  lastActiveByUser: Map<string, Date>;
+  groupsByUser: Map<string, { id: number; name: string }[]>;
+}
 
+/** Shared list SQL for the admin user surface (rows + last_active + groups). */
+async function fetchAdminUserList(): Promise<AdminUserList> {
   const usersRes = await query<UserAdminRow>(
     `SELECT id, email, role, is_active,
             (password_hash IS NOT NULL) AS password_configured,
@@ -331,6 +402,24 @@ manageUsersRoutes.get("/manage/users", requireAuth, async (c) => {
     groupsByUser.set(row.user_id, list);
   }
 
+  return { users: usersRes.rows, lastActiveByUser, groupsByUser };
+}
+
+manageUsersRoutes.get("/manage/users", requireAuth, async (c) => {
+  const auth = getAuth(c);
+  if (!auth) {
+    return c.json({ detail: "Unauthorized" }, 401);
+  }
+  if (!canListUsers(auth.user)) {
+    return c.json(
+      { detail: "You do not have permission to perform this action" },
+      403,
+    );
+  }
+  const includeApiKeys = c.req.query("include_api_keys") === "true";
+
+  const { users, lastActiveByUser, groupsByUser } = await fetchAdminUserList();
+
   // API keys per user, only requested via ?include_api_keys=true.
   const apiKeysByUser = new Map<string, Record<string, unknown>[]>();
   if (includeApiKeys) {
@@ -353,7 +442,7 @@ manageUsersRoutes.get("/manage/users", requireAuth, async (c) => {
     }
   }
 
-  const accepted = usersRes.rows.map((row) => {
+  const accepted = users.map((row) => {
     const effective = getEffectivePermissions({
       effective_permissions: row.effective_permissions ?? [],
       is_anonymous_user: false,
@@ -392,6 +481,53 @@ manageUsersRoutes.get("/manage/users", requireAuth, async (c) => {
     accepted_pages: 1,
     invited_pages: 1,
     slack_users_pages: 1,
+  });
+});
+
+// GET /manage/users/accepted/all — admin-only accepted-user list consumed
+// directly as FullUserSnapshot[] (useAdminUsers.ts useSWR<FullUserSnapshot[]>
+// on SWR_KEYS.acceptedUsers; item shape = web/src/views/admin/UsersPage/types.ts
+// FullUserSnapshot). The original endpoint is require_admin — group managers
+// fall back to GET /manage/users instead.
+manageUsersRoutes.get("/manage/users/accepted/all", requireAdmin, async (c) => {
+  const { users, lastActiveByUser, groupsByUser } = await fetchAdminUserList();
+  return c.json(
+    users.map((row) => ({
+      id: row.id,
+      email: row.email,
+      account_type: "STANDARD" as const,
+      is_admin: row.role === "admin",
+      is_active: row.is_active,
+      password_configured: row.password_configured,
+      personal_name: row.personal_name,
+      created_at: row.created_at.toISOString(),
+      updated_at: row.updated_at.toISOString(),
+      last_active: lastActiveByUser.get(row.id)?.toISOString() ?? null,
+      groups: groupsByUser.get(row.id) ?? [],
+      is_scim_synced: false,
+      craft_enabled: null,
+    })),
+  );
+});
+
+// GET /manage/users/invited — admin-only invited list, consumed as
+// InvitedUserSnapshot[] ({ email }[] — web/src/lib/types.ts). There is no
+// invite flow in this port, so the list is always empty.
+manageUsersRoutes.get("/manage/users/invited", requireAdmin, (c) => {
+  return c.json([]);
+});
+
+// GET /manage/users/download — users CSV (svc.ts downloadUsersCsv fetches the
+// blob and names it onyx_users_<timestamp>.csv client-side). Header row plus
+// one line per user from the same list as GET /manage/users.
+manageUsersRoutes.get("/manage/users/download", requireAdmin, async (c) => {
+  const list = await fetchAdminUserList();
+  return new Response(buildUsersCsv(list), {
+    status: 200,
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="onyx_users.csv"`,
+    },
   });
 });
 
@@ -439,4 +575,383 @@ manageUsersRoutes.get("/manage/users/counts", requireAuth, async (c) => {
     invited: 0,
     admins,
   });
+});
+
+// ---------------------------------------------------------------------------
+// EE: user-management mutations + admin password reset (port of
+// server/manage/users.py deactivate_user / activate_user / delete_user /
+// change_user_role / invite_users and the admin reset-password action).
+// Request shapes follow web/src/views/admin/UsersPage/svc.ts verbatim:
+//   - PATCH|POST /manage/admin/deactivate-user     body { user_email }
+//   - PATCH|POST /manage/admin/activate-user       body { user_email }
+//   - DELETE|POST /manage/admin/delete-user        body { user_email }
+//   - PATCH|POST /manage/admin/users/admin-access  body { user_email, is_admin }
+//   - PUT|POST /manage/admin/users (invite)        body { emails: string[] }
+//   - PATCH|POST /manage/admin/remove-invited-user body { user_email }
+//   - POST /password/reset_password                body { user_email }
+// All of these are require_admin (the mutations are admin-only in the original);
+// failures are {"detail": ...} so svc.ts parseErrorDetail can surface them.
+// ---------------------------------------------------------------------------
+
+// Valid-enough email gate for auto-created accounts (port of is_valid_email).
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Unambiguous alphabet for generated passwords (upper+lower+digit, no lookalikes).
+const RANDOM_PASSWORD_ALPHABET =
+  "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+
+/** 24-char random password for created/reset accounts (bcrypt-hashed before storage). */
+function generateRandomPassword(): string {
+  const bytes = randomBytes(24);
+  let password = "";
+  for (const byte of bytes) {
+    password += RANDOM_PASSWORD_ALPHABET[byte % RANDOM_PASSWORD_ALPHABET.length];
+  }
+  return password;
+}
+
+/** Parse the `{ user_email: string }` body shared by the admin mutation endpoints. */
+async function readUserEmailBody(c: Context): Promise<string> {
+  const body = (await c.req.json().catch(() => ({}))) as { user_email?: unknown };
+  const email = typeof body.user_email === "string" ? body.user_email.trim() : "";
+  if (!email) {
+    throw new InvalidRequestError("user_email is required");
+  }
+  return email;
+}
+
+/** Port of db/users.py get_all_admin_users, reduced to a count. */
+async function countAdmins(): Promise<number> {
+  const row = await queryOne<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM onyx_user WHERE role = 'admin'`,
+  );
+  return Number(row?.count ?? 0);
+}
+
+/** Port of db/auth.py get_active_admin_users, reduced to a count. */
+async function countActiveAdmins(): Promise<number> {
+  const row = await queryOne<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM onyx_user WHERE role = 'admin' AND is_active`,
+  );
+  return Number(row?.count ?? 0);
+}
+
+/** RFC 4180 cell escaping for the users CSV download. */
+function csvCell(value: string): string {
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+/** Users CSV for GET /manage/users/download (header row + one line per user). */
+function buildUsersCsv(list: AdminUserList): string {
+  const header = [
+    "id",
+    "email",
+    "personal_name",
+    "groups",
+    "is_admin",
+    "is_active",
+    "last_active",
+    "created_at",
+    "updated_at",
+  ];
+  const lines = [header.join(",")];
+  for (const row of list.users) {
+    lines.push(
+      [
+        row.id,
+        row.email,
+        row.personal_name ?? "",
+        (list.groupsByUser.get(row.id) ?? []).map((g) => g.name).join(", "),
+        row.role === "admin" ? "true" : "false",
+        row.is_active ? "true" : "false",
+        list.lastActiveByUser.get(row.id)?.toISOString() ?? "",
+        row.created_at.toISOString(),
+        row.updated_at.toISOString(),
+      ]
+        .map(csvCell)
+        .join(","),
+    );
+  }
+  return lines.join("\r\n") + "\r\n";
+}
+
+// PATCH|POST /manage/admin/deactivate-user — body { user_email } (svc.ts
+// deactivateUser). Port of deactivate_user: refuses self-deactivation and the
+// last active admin.
+async function deactivateUserHandler(c: Context) {
+  const auth = getAuth(c);
+  if (!auth) {
+    return c.json({ detail: "Unauthorized" }, 401);
+  }
+  const email = await readUserEmailBody(c);
+  const target = await getUserByEmail(email);
+  if (!target) {
+    return c.json({ detail: `User with email ${email} does not exist` }, 400);
+  }
+  if (target.id === auth.user.id) {
+    return c.json({ detail: "Cannot deactivate yourself" }, 400);
+  }
+  if (target.role === "admin" && target.is_active) {
+    const activeAdmins = await countActiveAdmins();
+    if (activeAdmins <= 1) {
+      return c.json({ detail: "Cannot deactivate the last active admin" }, 400);
+    }
+  }
+  await query(
+    `UPDATE onyx_user SET is_active = false, updated_at = now() WHERE id = $1`,
+    [target.id],
+  );
+  return c.json(null);
+}
+manageUsersRoutes.patch(
+  "/manage/admin/deactivate-user",
+  requireAdmin,
+  deactivateUserHandler,
+);
+manageUsersRoutes.post(
+  "/manage/admin/deactivate-user",
+  requireAdmin,
+  deactivateUserHandler,
+);
+
+// PATCH|POST /manage/admin/activate-user — body { user_email } (svc.ts
+// activateUser). Port of activate_user.
+async function activateUserHandler(c: Context) {
+  const auth = getAuth(c);
+  if (!auth) {
+    return c.json({ detail: "Unauthorized" }, 401);
+  }
+  const email = await readUserEmailBody(c);
+  const target = await getUserByEmail(email);
+  if (!target) {
+    return c.json({ detail: `User with email ${email} does not exist` }, 400);
+  }
+  await query(
+    `UPDATE onyx_user SET is_active = true, updated_at = now() WHERE id = $1`,
+    [target.id],
+  );
+  return c.json(null);
+}
+manageUsersRoutes.patch(
+  "/manage/admin/activate-user",
+  requireAdmin,
+  activateUserHandler,
+);
+manageUsersRoutes.post(
+  "/manage/admin/activate-user",
+  requireAdmin,
+  activateUserHandler,
+);
+
+// DELETE|POST /manage/admin/delete-user — body { user_email } (svc.ts
+// deleteUser). Port of delete_user: refuses self-deletion and the last admin;
+// clears group memberships, API keys and sessions before the user row itself.
+async function deleteUserHandler(c: Context) {
+  const auth = getAuth(c);
+  if (!auth) {
+    return c.json({ detail: "Unauthorized" }, 401);
+  }
+  const email = await readUserEmailBody(c);
+  const target = await getUserByEmail(email);
+  if (!target) {
+    return c.json({ detail: `User with email ${email} does not exist` }, 400);
+  }
+  if (target.id === auth.user.id) {
+    return c.json({ detail: "Cannot delete yourself" }, 400);
+  }
+  if (target.role === "admin") {
+    const admins = await countAdmins();
+    if (admins <= 1) {
+      return c.json({ detail: "Cannot delete the last admin" }, 400);
+    }
+  }
+  await withTransaction(async (client) => {
+    await client.query(`DELETE FROM user__user_group WHERE user_id = $1`, [
+      target.id,
+    ]);
+    await client.query(`DELETE FROM api_key WHERE user_id = $1`, [target.id]);
+    await client.query(`DELETE FROM user_session WHERE user_id = $1`, [
+      target.id,
+    ]);
+    await client.query(`DELETE FROM onyx_user WHERE id = $1`, [target.id]);
+  });
+  return c.json(null);
+}
+manageUsersRoutes.delete(
+  "/manage/admin/delete-user",
+  requireAdmin,
+  deleteUserHandler,
+);
+manageUsersRoutes.post(
+  "/manage/admin/delete-user",
+  requireAdmin,
+  deleteUserHandler,
+);
+
+// PATCH|POST /manage/admin/users/admin-access — body { user_email, is_admin }
+// (svc.ts setUserAdminAccess). Port of change_user_role: flips the role and
+// swaps the default-group membership (Admin <-> Basic), then recomputes
+// effective_permissions from the group grants.
+async function setUserAdminAccessHandler(c: Context) {
+  const auth = getAuth(c);
+  if (!auth) {
+    return c.json({ detail: "Unauthorized" }, 401);
+  }
+  const body = (await c.req.json().catch(() => ({}))) as {
+    user_email?: unknown;
+    is_admin?: unknown;
+  };
+  const email = typeof body.user_email === "string" ? body.user_email.trim() : "";
+  if (!email || typeof body.is_admin !== "boolean") {
+    throw new InvalidRequestError("user_email and is_admin are required");
+  }
+  const isAdmin = body.is_admin;
+  const target = await getUserByEmail(email);
+  if (!target) {
+    return c.json({ detail: `User with email ${email} does not exist` }, 400);
+  }
+  if (!isAdmin && target.id === auth.user.id) {
+    return c.json({ detail: "Cannot revoke your own admin access" }, 400);
+  }
+  if (!isAdmin && target.role === "admin") {
+    const admins = await countAdmins();
+    if (admins <= 1) {
+      return c.json({ detail: "Cannot revoke the last admin" }, 400);
+    }
+  }
+  const role = isAdmin ? "admin" : "basic";
+  await withTransaction(async (client) => {
+    await client.query(
+      `UPDATE onyx_user SET role = $2, updated_at = now() WHERE id = $1`,
+      [target.id, role],
+    );
+    // Swap the default-group membership to mirror the role (port of
+    // assign_user_to_default_groups__no_commit): drop the previous default
+    // group, add the new one, then recompute effective_permissions below.
+    await client.query(
+      `DELETE FROM user__user_group m
+       USING user_group g
+       WHERE m.user_group_id = g.id AND m.user_id = $1
+         AND g.is_default AND g.name = $2`,
+      [target.id, isAdmin ? "Basic" : "Admin"],
+    );
+    await client.query(
+      `INSERT INTO user__user_group (user_id, user_group_id)
+       SELECT $1, g.id FROM user_group g
+       WHERE g.name = $2 AND g.is_default
+       ON CONFLICT (user_id, user_group_id) DO NOTHING`,
+      [target.id, isAdmin ? "Admin" : "Basic"],
+    );
+  });
+  // recompute_user_permissions__no_commit port (src/auth/users.ts helper).
+  await recomputeUserPermissions(target.id);
+  return c.json(null);
+}
+manageUsersRoutes.patch(
+  "/manage/admin/users/admin-access",
+  requireAdmin,
+  setUserAdminAccessHandler,
+);
+manageUsersRoutes.post(
+  "/manage/admin/users/admin-access",
+  requireAdmin,
+  setUserAdminAccessHandler,
+);
+
+// PUT|POST /manage/admin/users — body { emails: string[] } (svc.ts
+// inviteUsers). Port of invite_users without the email-delivery flow: each
+// address gets a real, active account immediately (role admin per this
+// deployment's all-admin policy) with a random password; the admin hands the
+// credentials over via the reset-password action. Known addresses are reported
+// instead of duplicated (original's dedupe), under the InviteUsersResponse keys
+// the original client ignores.
+async function inviteUsersHandler(c: Context) {
+  const body = (await c.req.json().catch(() => ({}))) as { emails?: unknown };
+  if (!Array.isArray(body.emails)) {
+    return c.json({ detail: "emails is required" }, 422);
+  }
+  const emails: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of body.emails) {
+    if (typeof raw !== "string") continue;
+    const email = raw.trim().toLowerCase();
+    if (!email || seen.has(email)) continue;
+    if (!EMAIL_RE.test(email)) {
+      return c.json({ detail: "Invalid email" }, 400);
+    }
+    seen.add(email);
+    emails.push(email);
+  }
+  const users: { id: string; email: string; is_active: boolean }[] = [];
+  for (const email of emails) {
+    const existing = await getUserByEmail(email);
+    if (existing) {
+      users.push({
+        id: existing.id,
+        email: existing.email,
+        is_active: existing.is_active,
+      });
+      continue;
+    }
+    const user = await createUser(email, generateRandomPassword(), {
+      role: "admin",
+      isActive: true,
+    });
+    users.push({ id: user.id, email: user.email, is_active: user.is_active });
+  }
+  return c.json({ invited_users: [], users });
+}
+manageUsersRoutes.put("/manage/admin/users", requireAdmin, inviteUsersHandler);
+manageUsersRoutes.post("/manage/admin/users", requireAdmin, inviteUsersHandler);
+
+// PATCH|POST /manage/admin/remove-invited-user — body { user_email } (svc.ts
+// cancelInvite). There is no invite table in this port (accounts are created
+// synchronously by PUT /manage/admin/users), so the request is acknowledged and
+// its body ignored.
+async function removeInvitedUserHandler(c: Context) {
+  await c.req.json().catch(() => ({}));
+  return c.json({ ok: true });
+}
+manageUsersRoutes.patch(
+  "/manage/admin/remove-invited-user",
+  requireAdmin,
+  removeInvitedUserHandler,
+);
+manageUsersRoutes.post(
+  "/manage/admin/remove-invited-user",
+  requireAdmin,
+  removeInvitedUserHandler,
+);
+
+// POST /password/reset_password — admin password reset (svc.ts resetPassword,
+// body { user_email }): mints a fresh random password, replaces password_hash
+// and returns { user_id, new_password } for the reveal modal
+// (UserActionModals.tsx). Mirrors the admin-reset password_helper path
+// (PasswordHelper.hash -> bcrypt).
+async function resetPasswordHandler(c: Context) {
+  const auth = getAuth(c);
+  if (!auth) {
+    return c.json({ detail: "Unauthorized" }, 401);
+  }
+  const email = await readUserEmailBody(c);
+  const target = await getUserByEmail(email);
+  if (!target) {
+    return c.json({ detail: `User with email ${email} does not exist` }, 400);
+  }
+  const newPassword = generateRandomPassword();
+  const passwordHash = await hashPassword(newPassword);
+  await query(
+    `UPDATE onyx_user SET password_hash = $2, updated_at = now() WHERE id = $1`,
+    [target.id, passwordHash],
+  );
+  return c.json({ user_id: target.id, new_password: newPassword });
+}
+manageUsersRoutes.post("/password/reset_password", requireAdmin, resetPasswordHandler);
+
+// GET /tenants/users/pending — cloud-tenant "requested to join" queue
+// (SWR_KEYS.pendingTenantUsers, fetched as InvitedUserSnapshot[] only when
+// NEXT_PUBLIC_CLOUD_ENABLED is on). No tenant flow exists in this port: the
+// queue is always empty.
+manageUsersRoutes.get("/tenants/users/pending", requireAuth, (c) => {
+  return c.json([]);
 });

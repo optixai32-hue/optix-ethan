@@ -22,11 +22,11 @@
  * Missing/unreadable files are logged and skipped (matching the Python
  * connector's "No file record found ... skipping" behavior).
  */
-import type { ConnectorDoc, SlimDocMetadata } from "../../types/domain";
-import type { ConnectorRunner } from "../framework";
-import { loadState, saveState } from "../framework";
-import { getFile } from "../../storage/file_store";
-import { getLogger } from "../../utils/logger";
+import type { ConnectorDoc, SlimDocMetadata } from "../../types/domain.js";
+import type { ConnectorRunner } from "../framework.js";
+import { loadState, saveState } from "../framework.js";
+import { getFile } from "../../storage/file_store.js";
+import { getLogger } from "../../utils/logger.js";
 
 const logger = getLogger("connectors.file");
 

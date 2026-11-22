@@ -31,35 +31,36 @@ import type {
   Citation,
   Persona,
   SearchDoc,
-} from "../types/domain";
-import { getLogger } from "../utils/logger";
+} from "../types/domain.js";
+import { getLogger } from "../utils/logger.js";
 import {
   ChatRuntimeError,
   InvalidMessageExceptionError,
   LLMGenerationError,
   OnyxError,
-} from "../utils/errors";
-import { getLLMProvider } from "../llm/factory";
-import type { LLMMessage, LLMToolSpec } from "../llm/types";
-import { StreamEmitter } from "./emitter";
-import { StreamBuffer } from "./stream_buffer";
-import type { Packet } from "./models";
+} from "../utils/errors.js";
+import { getLLMProvider } from "../llm/factory.js";
+import type { LLMMessage, LLMToolSpec } from "../llm/types.js";
+import { StreamEmitter } from "./emitter.js";
+import { runDeepResearch } from "./deep_research.js";
+import { StreamBuffer } from "./stream_buffer.js";
+import type { Packet } from "./models.js";
 import {
   appendChatMessage,
   getChatMessages,
   getChatSession,
   updateChatMessage,
-} from "./persistence";
-import { buildHistory } from "./history_store";
-import { getDefaultPersona, getPersona } from "../agents/personas";
-import { buildCitedSystemPrompt } from "../rag/prompt_builder";
+} from "./persistence.js";
+import { buildHistory } from "./history_store.js";
+import { getDefaultPersona, getPersona } from "../agents/personas.js";
+import { buildCitedSystemPrompt } from "../rag/prompt_builder.js";
 import {
   buildCitationsForAnswer,
   DynamicCitationProcessor,
-} from "../rag/citations";
-import type { CitationInfoEvent } from "../rag/citations";
-import { getTool, listTools } from "../tools/registry";
-import { registerBuiltInTools } from "../tools/built_in_tools";
+} from "../rag/citations.js";
+import type { CitationInfoEvent } from "../rag/citations.js";
+import { getTool, listTools } from "../tools/registry.js";
+import { registerBuiltInTools } from "../tools/built_in_tools.js";
 
 const logger = getLogger("chat.process_message");
 
@@ -83,6 +84,16 @@ export interface ProcessMessageOptions {
    * (newline-delimited AnswerStreamPart, the original /chat/send-chat-message
    * wire format consumed by the original frontend). */
   wireFormat?: "sse" | "ndjson";
+  /** Per-turn provider routing from the send-chat-message llm_override
+   * (model_configuration_id / model_provider resolution in
+   * server/routes/chat.ts); takes precedence over the persona default. */
+  llmProviderId?: string;
+  /** Per-turn model name from the llm_override; falls back to the persona's
+   * llm_model_version_override when unset. */
+  llmModelName?: string;
+  /** Deep Research toggle (web input bar): run the iterative multi-hop
+   * research loop before the final answer (chat/deep_research.ts). */
+  deepResearch?: boolean;
 }
 
 function sseFrame(packet: Packet): string {
@@ -164,7 +175,9 @@ function ndjsonFrame(packet: Packet): string {
     case "reasoning_start":
       // ReasoningStart (streaming_models.py): thinking-phase opener — renders
       // as the collapsible "Thinking" timeline step (ReasoningRenderer).
-      return JSON.stringify({ placement, obj: { type: "reasoning_start" } }) + "\n";
+      return (
+        JSON.stringify({ placement, obj: { type: "reasoning_start" } }) + "\n"
+      );
     case "reasoning_delta":
       return (
         JSON.stringify({
@@ -173,7 +186,65 @@ function ndjsonFrame(packet: Packet): string {
         }) + "\n"
       );
     case "reasoning_done":
-      return JSON.stringify({ placement, obj: { type: "reasoning_done" } }) + "\n";
+      return (
+        JSON.stringify({ placement, obj: { type: "reasoning_done" } }) + "\n"
+      );
+    // ---- Deep Research packets (web/src/app/app/services/streamingModels.ts
+    // DeepResearchPlan*/ResearchAgentStart/IntermediateReport* shapes)
+    case "deep_research_plan_start":
+      return (
+        JSON.stringify({
+          placement,
+          obj: { type: "deep_research_plan_start" },
+        }) + "\n"
+      );
+    case "deep_research_plan_delta":
+      return (
+        JSON.stringify({
+          placement,
+          obj: {
+            type: "deep_research_plan_delta",
+            content: packet.message || ((obj?.content as string | undefined) ?? ""),
+          },
+        }) + "\n"
+      );
+    case "research_agent_start":
+      return (
+        JSON.stringify({
+          placement,
+          obj: {
+            type: "research_agent_start",
+            research_task: (obj?.research_task as string | undefined) ?? packet.message ?? "",
+          },
+        }) + "\n"
+      );
+    case "intermediate_report_start":
+      return (
+        JSON.stringify({
+          placement,
+          obj: { type: "intermediate_report_start" },
+        }) + "\n"
+      );
+    case "intermediate_report_delta":
+      return (
+        JSON.stringify({
+          placement,
+          obj: {
+            type: "intermediate_report_delta",
+            content: packet.message || ((obj?.content as string | undefined) ?? ""),
+          },
+        }) + "\n"
+      );
+    case "intermediate_report_cited_docs":
+      return (
+        JSON.stringify({
+          placement,
+          obj: {
+            type: "intermediate_report_cited_docs",
+            cited_docs: (obj?.cited_docs as unknown) ?? null,
+          },
+        }) + "\n"
+      );
     case "error":
       // StreamingError is a bare (unwrapped) AnswerStreamPart
       return (
@@ -350,8 +421,8 @@ export async function processMessage(
           }
 
           const provider = await getLLMProvider(
-            undefined,
-            persona.llm_model_version_override ?? undefined,
+            opts.llmProviderId ?? undefined,
+            opts.llmModelName ?? persona.llm_model_version_override ?? undefined,
           );
           const tools = listTools();
           const toolSpecs: LLMToolSpec[] = tools.map((t) => ({
@@ -370,12 +441,12 @@ export async function processMessage(
           const rows = await getChatMessages(session.id);
           const inMemory: LLMMessage[] = [];
 
-          // Tool context factory — shared by the automatic retrieval step and
-          // the in-loop tool executions below. `turn` is the llm_cycle_count of
-          // the original placement semantics (llm_loop.py: tool packets carry
-          // the turn of the LLM step that called them) and `tab` the parallel
-          // tab within that turn (tab 0 is reserved for the reasoning group,
-          // so each tool call renders as its own parallel step).
+          // Tool context factory — used by the in-loop tool executions below.
+          // `turn` is the llm_cycle_count of the original placement semantics
+          // (llm_loop.py: tool packets carry the turn of the LLM step that
+          // called them) and `tab` the parallel tab within that turn (tab 0 is
+          // reserved for the step's reasoning group, so each tool call renders
+          // as its own parallel step).
           const makeToolContext = (turn: number, tab = 0) => ({
             userId: opts.user.user.id,
             chatSessionId: session.id,
@@ -405,23 +476,64 @@ export async function processMessage(
             },
           });
 
-          // ---- Automatic retrieval step (port of process_message.py: the
-          // search tool runs on the user's message before generation, so the
-          // answer is always grounded in the user's indexed documents; the
-          // agent loop below keeps tools available for follow-up searches).
-          const searchTool = getTool("search_internal");
-          if (searchTool) {
+          // ---- Deep Research (chat toggle): plan -> search per sub-question
+          // -> intermediate reports; the reports then seed the agent loop's
+          // context so the final answer stays inside the normal cited path.
+          if (opts.deepResearch) {
+            const searchForResearch = async (query: string): Promise<SearchDoc[]> => {
+              const searchToolInstance = toolById.get("search_internal") ?? getTool("search_internal");
+              const webSearchInstance = toolById.get("web_search") ?? getTool("web_search");
+              const docs: SearchDoc[] = [];
+              for (const instance of [searchToolInstance, webSearchInstance]) {
+                if (!instance || runAbort.signal.aborted) continue;
+                try {
+                  const result = await instance.run(
+                    { query, num_hits: 10 },
+                    makeToolContext(0),
+                  );
+                  // Tool.run returns formatted text; the documents themselves
+                  // were already merged into gatheredDocs/citationMapping via
+                  // the emit contract — read them from there.
+                  void result;
+                } catch (err) {
+                  logger.warning("deep research tool failed", {
+                    tool: instance.id,
+                    error: String(err),
+                  });
+                }
+              }
+              // The tool context merged each tool's docs into gatheredDocs;
+              // return the full gathered set (deduped by mergeGatheredDocs).
+              docs.push(...gatheredDocs);
+              return docs;
+            };
+
             try {
-              // Turn 0: the retrieval step occupies the first llm_cycle slot
-              // (llm_loop.py llm_cycle_count=0); the agent loop's LLM steps
-              // therefore start at turn 1.
-              await searchTool.run({ query: opts.message }, makeToolContext(0));
-            } catch (err) {
-              logger.warning("automatic retrieval failed", {
-                error: String(err),
+              const research = await runDeepResearch({
+                provider,
+                emitter,
+                query: opts.message,
+                history: buildHistory(rows, persona.system_prompt),
+                search: searchForResearch,
+                mergeDocs: (incoming) =>
+                  mergeGatheredDocs(gatheredDocs, citationMapping, incoming),
+                signal: runAbort.signal,
               });
+              // The reports become in-memory context ahead of the agent loop.
+              inMemory.push(...research.contextMessages);
+            } catch (err) {
+              logger.warning("deep research loop failed", { error: String(err) });
             }
           }
+
+          // NOTE (upstream fidelity — llm_loop.py:929-945): there is NO forced
+          // retrieval step before the agent loop. Onyx offers the Search tool
+          // to the model with tool_choice=AUTO and the model itself decides
+          // when to search. A forced pre-search made every single turn show
+          // "Searching internal documents" (even for greetings), burned one
+          // LLM cycle per turn, and failed on deployments without a vector DB.
+          // Search still happens — as a normal tool call inside the loop —
+          // whenever the model judges the question document-related.
 
           // ---- Agent loop (agent.py ChatAgent; escape hatches: max steps,
           // AbortSignal, wall-clock deadline)
@@ -446,10 +558,11 @@ export async function processMessage(
             const offerTools = step < MAX_AGENT_STEPS - 1;
 
             // Placement turn for this LLM cycle (llm_loop.py:1125 —
-            // turn_index = llm_cycle_count + reasoning_cycles). The retrieval
-            // step consumed cycle 0, so agent-loop step N runs at turn N + 1;
-            // tools called from this step share its turn.
-            const cycleTurn = step + 1;
+            // turn_index = llm_cycle_count; there is no forced retrieval step
+            // in this port, so cycle 0 is the first LLM step and agent-loop
+            // step N runs at turn N; tools called from this step share its
+            // turn, each on its own parallel tab).
+            const cycleTurn = step;
 
             stepBuffer = new StreamBuffer();
             let reasoningStarted = false;
@@ -488,6 +601,7 @@ export async function processMessage(
                 break;
               }
             }
+
             if (reasoningStarted) {
               emitter.sendObject("reasoning_done", cycleTurn, {});
             }

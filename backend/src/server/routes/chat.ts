@@ -26,18 +26,18 @@ import { createHash } from "node:crypto";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
-import { query, queryOne } from "../../db/client";
-import { SESSION_COOKIE_NAME } from "../../configs/constants";
-import type { AuthContext, User } from "../../types/domain";
-import { getLogger } from "../../utils/logger";
+import { query, queryOne } from "../../db/client.js";
+import { SESSION_COOKIE_NAME } from "../../configs/constants.js";
+import type { AuthContext, User } from "../../types/domain.js";
+import { getLogger } from "../../utils/logger.js";
 import {
   ForbiddenError,
   InvalidMessageExceptionError,
   InvalidRequestError,
   UnauthorizedError,
   UnsupportedFeatureError,
-} from "../../utils/errors";
-import { processMessage } from "../../chat/process_message";
+} from "../../utils/errors.js";
+import { processMessage } from "../../chat/process_message.js";
 import {
   createChatSession,
   deleteChatSession,
@@ -46,9 +46,9 @@ import {
   getChatSession,
   getFallbackChatSessionName,
   listChatSessions,
-} from "../../chat/persistence";
-import { getDefaultPersona, getPersona } from "../../agents/personas";
-import { registerBuiltInTools } from "../../tools/built_in_tools";
+} from "../../chat/persistence.js";
+import { getDefaultPersona, getPersona } from "../../agents/personas.js";
+import { registerBuiltInTools } from "../../tools/built_in_tools.js";
 
 const logger = getLogger("routes.chat");
 
@@ -232,6 +232,78 @@ interface LLMOverride {
   model_version?: string | null;
   model_configuration_id?: number | null;
   reasoning_effort?: string | null;
+}
+
+/**
+ * Map DB / frontend provider spellings to llm/factory.ts routing ids
+ * (the DB and the original frontend use the constants.py spelling
+ * "openai_compatible", the factory routes on "openai-compatible").
+ */
+function normalizeProviderId(provider: string): string {
+  return provider === "openai_compatible" ? "openai-compatible" : provider;
+}
+
+interface ResolvedLlmSelection {
+  llmProviderId?: string;
+  llmModelName?: string;
+}
+
+/**
+ * Resolve a per-request LLMOverride (frontend lib.tsx sendMessage payload)
+ * into the (providerId, modelName) pair threaded into processMessage.
+ * Priority: explicit model_configuration_id (DB row joined with its provider)
+ * > model_provider + model_version > model_version alone. Mirrors the
+ * handle_send_chat_message flow's ModelConfigurationOverride resolution.
+ */
+async function resolveLlmOverride(override: LLMOverride | null | undefined): Promise<ResolvedLlmSelection> {
+  if (!override || typeof override !== "object") return {};
+  if (override.model_configuration_id != null) {
+    const row = await queryOne<{
+      model_name: string;
+      provider: string;
+      api_base: string | null;
+      api_key: string | null;
+    }>(
+      `SELECT mc.name AS model_name, lp.provider AS provider, lp.api_base, lp.api_key
+         FROM model_configuration mc
+         JOIN llm_provider lp ON lp.id = mc.llm_provider_id
+        WHERE mc.id = $1`,
+      [override.model_configuration_id],
+    );
+    if (row) {
+      return {
+        llmProviderId: normalizeProviderId(row.provider),
+        llmModelName: row.model_name,
+      };
+    }
+    return {};
+  }
+  // model_provider may be either the provider column id ("kilo",
+  // "openai-compatible") or the admin-facing display NAME — the original
+  // frontend's model selector sends LLMProviderDescriptor.name from
+  // llmManager.currentLlm (useChatController modelProvider), and several
+  // provider rows can share one display name (e.g. a retired duplicate).
+  // Resolve names through the DB, preferring the default row when several
+  // providers share the display name; column ids pass through unchanged.
+  let providerId = override.model_provider
+    ? normalizeProviderId(override.model_provider)
+    : undefined;
+  if (providerId) {
+    const byName = await queryOne<{ provider: string }>(
+      `SELECT provider FROM llm_provider
+        WHERE name = $1
+        ORDER BY is_default DESC, id ASC
+        LIMIT 1`,
+      [providerId],
+    );
+    if (byName?.provider) {
+      providerId = normalizeProviderId(byName.provider);
+    }
+  }
+  return {
+    ...(providerId ? { llmProviderId: providerId } : {}),
+    ...(override.model_version ? { llmModelName: override.model_version } : {}),
+  };
 }
 
 async function getSessionLLMOverride(
@@ -687,6 +759,10 @@ chatRoutes.post("/send-chat-message", async (c) => {
     chat_session_info?: Record<string, unknown> | null;
     stream?: boolean;
     persona_id?: number | null;
+    llm_override?: LLMOverride | null;
+    deep_research?: boolean;
+    allowed_tool_ids?: number[];
+    forced_tool_id?: number | null;
   };
   try {
     body = z
@@ -697,6 +773,26 @@ chatRoutes.post("/send-chat-message", async (c) => {
         chat_session_info: z.record(z.string(), z.unknown()).nullish(),
         stream: z.boolean().optional(),
         persona_id: z.number().int().nullish(),
+        // Per-request LLM selection sent by the original frontend
+        // (web/src/app/app/services/lib.tsx sendMessage payload). Temperature
+        // is accepted but intentionally NOT applied here: the session-level
+        // temperature override path (update-chat-session-temperature) already
+        // persists it separately, mirroring the upstream session override.
+        llm_override: z
+          .object({
+            temperature: z.number().nullish(),
+            model_provider: z.string().nullish(),
+            model_version: z.string().nullish(),
+            model_configuration_id: z.number().int().nullish(),
+          })
+          .nullish(),
+        // Accepted for wire compatibility with the original frontend payload.
+        // deep_research drives the iterative research loop in
+        // chat/deep_research.ts; allowed_tool_ids/forced_tool_id are accepted
+        // (tool-level filtering is not implemented in this port).
+        deep_research: z.boolean().optional(),
+        allowed_tool_ids: z.array(z.number().int()).optional(),
+        forced_tool_id: z.number().int().nullish(),
       })
       .parse(await c.req.json());
   } catch (err) {
@@ -721,6 +817,23 @@ chatRoutes.post("/send-chat-message", async (c) => {
     chatSessionId = session.id;
   }
 
+  // Resolve the effective LLM selection: the session's persisted llm_override
+  // (update-chat-session-model / -temperature / -reasoning PUTs) is the base,
+  // and the per-request override (frontend sendMessage payload) wins field by
+  // field when present. Nothing new is persisted here.
+  const sessionOverride = await getSessionLLMOverride(chatSessionId, auth.user.id);
+  const mergedOverride: LLMOverride = {
+    ...(sessionOverride ?? {}),
+  };
+  if (body.llm_override) {
+    for (const [key, value] of Object.entries(body.llm_override)) {
+      if (value !== null && value !== undefined) {
+        (mergedOverride as Record<string, unknown>)[key] = value;
+      }
+    }
+  }
+  const llmSelection = await resolveLlmOverride(mergedOverride);
+
   const stream = await processMessage({
     user: auth,
     chatSessionId,
@@ -728,6 +841,8 @@ chatRoutes.post("/send-chat-message", async (c) => {
     personaId: body.persona_id ?? undefined,
     signal: c.req.raw.signal,
     wireFormat: "ndjson",
+    deepResearch: body.deep_research === true,
+    ...llmSelection,
   });
 
   // NDJSON stream served with the original streaming content type

@@ -20,10 +20,10 @@
  * standard_answer__category tables (migration 0011).
  */
 import { Hono, type Context } from "hono";
-import { requireAdmin } from "../../auth/middleware";
-import { query, queryOne, withTransaction } from "../../db/client";
-import { InvalidRequestError, NotFoundError } from "../../utils/errors";
-import { getLogger } from "../../utils/logger";
+import { requireAdmin } from "../../auth/middleware.js";
+import { query, queryOne, withTransaction } from "../../db/client.js";
+import { InvalidRequestError, NotFoundError } from "../../utils/errors.js";
+import { getLogger } from "../../utils/logger.js";
 
 const logger = getLogger("server.routes.standard_answers");
 

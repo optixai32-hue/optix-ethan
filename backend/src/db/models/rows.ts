@@ -30,7 +30,7 @@ import type {
   TaskRow,
   User,
   UserSession,
-} from "../../types/domain";
+} from "../../types/domain.js";
 
 type Row = Record<string, unknown>;
 

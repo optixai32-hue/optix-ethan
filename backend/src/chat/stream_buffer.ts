@@ -21,7 +21,7 @@
  * max iterations) upstream; the buffer additionally guards its own size.
  */
 
-import type { LLMToolCall } from "../llm/types";
+import type { LLMToolCall } from "../llm/types.js";
 
 /** Port of CHAT_STREAM_BUFFER_MAX_BYTES (4 MiB backlog bound in stream_buffer.py). */
 const DEFAULT_MAX_BYTES = 4 * 1024 * 1024;

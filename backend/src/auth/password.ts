@@ -11,7 +11,7 @@
  * i.e. bcrypt.checkpw semantics. Bun.password implements bcrypt natively; we pin
  * cost 12, the passlib bcrypt default that fastapi_users inherits.
  */
-import { getLogger } from "../utils/logger";
+import { getLogger } from "../utils/logger.js";
 import bcrypt from "bcryptjs";
 
 /** Bun exposes native bcrypt; on Node (Vercel serverless) we use bcryptjs. */

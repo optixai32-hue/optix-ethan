@@ -7,7 +7,7 @@
  * recompute_user_permissions__no_commit). Implied permissions are expanded at
  * read time — only directly granted permissions are persisted.
  */
-import type { User } from "../types/domain";
+import type { User } from "../types/domain.js";
 
 /** Port of db/enums.py Permission (str, Enum) values. */
 export const Permission = {

@@ -7,31 +7,33 @@
  */
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { getLogger } from "../utils/logger";
-import { AuthError, OnyxError } from "../utils/errors";
-import { healthRoutes } from "./routes/health";
-import { authRoutes } from "./routes/auth";
-import { manageStateRoutes } from "./routes/manage_state";
-import { manageUsersRoutes } from "./routes/manage_users";
-import { userGroupRoutes } from "./routes/user_groups";
-import { standardAnswerRoutes } from "./routes/standard_answers";
-import { analyticsRoutes } from "./routes/analytics";
-import { eeAdminRoutes } from "./routes/ee_admin";
-import { settingsRoutes } from "./routes/settings";
-import { notificationsRoutes } from "./routes/notifications";
-import { llmRoutes, adminLlmRoutes } from "./routes/llm";
-import { chatRoutes } from "./routes/chat";
-import { searchRoutes } from "./routes/search";
-import { documentsRoutes } from "./routes/documents";
-import { connectorsRoutes } from "./routes/connectors";
-import { adminRoutes } from "./routes/admin";
-import { personasRoutes } from "./routes/personas";
-import { toolsRoutes } from "./routes/tools";
-import { artifactsRoutes } from "./routes/artifacts";
-import { mcpRoutes } from "./routes/mcp";
-import { integrationsRoutes } from "./routes/integrations";
-import { featuresRoutes } from "./routes/features";
-import { buildRoutes } from "./routes/build";
+import { getLogger } from "../utils/logger.js";
+import { AuthError, OnyxError } from "../utils/errors.js";
+import { healthRoutes } from "./routes/health.js";
+import { authRoutes } from "./routes/auth.js";
+import { manageStateRoutes } from "./routes/manage_state.js";
+import { manageUsersRoutes } from "./routes/manage_users.js";
+import { userGroupRoutes } from "./routes/user_groups.js";
+import { standardAnswerRoutes } from "./routes/standard_answers.js";
+import { analyticsRoutes } from "./routes/analytics.js";
+import { eeAdminRoutes } from "./routes/ee_admin.js";
+import { settingsRoutes } from "./routes/settings.js";
+import { notificationsRoutes } from "./routes/notifications.js";
+import { llmRoutes, adminLlmRoutes } from "./routes/llm.js";
+import { chatRoutes } from "./routes/chat.js";
+import { searchRoutes } from "./routes/search.js";
+import { documentsRoutes } from "./routes/documents.js";
+import { connectorsRoutes } from "./routes/connectors.js";
+import { adminRoutes } from "./routes/admin.js";
+import { personasRoutes } from "./routes/personas.js";
+import { toolsRoutes } from "./routes/tools.js";
+import { artifactsRoutes } from "./routes/artifacts.js";
+import { mcpRoutes } from "./routes/mcp.js";
+import { integrationsRoutes } from "./routes/integrations.js";
+import { featuresRoutes } from "./routes/features.js";
+import { adminSurfaceRoutes } from "./routes/admin_surface.js";
+import { voiceRoutes } from "./routes/voice.js";
+import { buildRoutes } from "./routes/build.js";
 
 const logger = getLogger("api.server");
 
@@ -82,6 +84,8 @@ app.route("/", integrationsRoutes); // /integrations surface
 app.route("/artifacts", artifactsRoutes);
 app.route("/mcp", mcpRoutes);
 app.route("/", featuresRoutes); // /input_prompt, /mcp/servers, /query/valid-tags, ... feature read paths
+app.route("/", adminSurfaceRoutes); // admin-surface fill-ins (license, search-settings, index-monitoring, ...)
+app.route("/", voiceRoutes); // /voice/* — TTS synthesis + voice settings
 app.route("/build", buildRoutes); // /build/* — Onyx Craft (sessions, streaming, artifacts)
 
 export { app };

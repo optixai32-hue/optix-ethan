@@ -6,11 +6,11 @@
  * The Hono app itself lives in src/server/app.ts so the Vercel serverless
  * entry (api/[...path].ts) can mount the identical surface on Node.
  */
-import { API_PORT } from "./configs/constants";
-import { getLogger } from "./utils/logger";
-import { runMigrations } from "./db/migrations/runner";
-import { app } from "./server/app";
-import { ensureDevPresetLlmProvider, ensureKiloProvider } from "./llm/setup";
+import { API_PORT } from "./configs/constants.js";
+import { getLogger } from "./utils/logger.js";
+import { runMigrations } from "./db/migrations/runner.js";
+import { app } from "./server/app.js";
+import { ensureDevPresetLlmProvider, ensureKiloProvider } from "./llm/setup.js";
 
 const logger = getLogger("api.server");
 
@@ -19,8 +19,8 @@ async function main() {
   await ensureDevPresetLlmProvider();
   try {
     // Kilo gateway seed: boot must survive a failed seed (the provider is
-    // optional and env-gated at call time), so a throw here is logged and
-    // swallowed.
+    // optional and env-gated at call time), so unlike the dev preset above a
+    // throw here is logged and swallowed.
     await ensureKiloProvider();
   } catch (err) {
     logger.error("kilo gateway llm seed failed (continuing)", { error: String(err) });

@@ -23,12 +23,12 @@
  * _generate_or_fallback_chat_session_name's try/except.
  */
 
-import { query, queryOne } from "../db/client";
-import type { ChatMessage, ChatSession, Citation } from "../types/domain";
-import { getLogger } from "../utils/logger";
-import { ForbiddenError, NotFoundError } from "../utils/errors";
-import { getLLMProvider } from "../llm/factory";
-import type { LLMMessage } from "../llm/types";
+import { query, queryOne } from "../db/client.js";
+import type { ChatMessage, ChatSession, Citation } from "../types/domain.js";
+import { getLogger } from "../utils/logger.js";
+import { ForbiddenError, NotFoundError } from "../utils/errors.js";
+import { getLLMProvider } from "../llm/factory.js";
+import type { LLMMessage } from "../llm/types.js";
 
 const logger = getLogger("chat.persistence");
 

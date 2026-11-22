@@ -16,7 +16,7 @@
  * Column names are snake_case and MUST match src/types/domain.ts interfaces.
  * Onyx Lite is out of scope: no DISABLE_VECTOR_DB / CACHE_BACKEND=postgres concepts here.
  */
-import type { MigrationVersion } from "./runner";
+import type { MigrationVersion } from "./runner.js";
 
 const INITIAL_STANDARD_SCHEMA = `
 -- gen_random_uuid() is a core PostgreSQL 13+ function (no pgcrypto needed).
@@ -579,7 +579,11 @@ CREATE TABLE IF NOT EXISTS build_message (
 ALTER TABLE build_message ADD COLUMN IF NOT EXISTS message_metadata JSONB NULL;
 `,
   },
-  {
+  // Migration 0013 — ported from the deployed repo history: replaces legacy
+  // bb13b8a-era craft tables with the v5.1.3 surface shapes (no-op on fresh
+  // databases where 0012 already created the same shapes; repairs shared
+  // production databases that recorded an older "0012" build-table shape).
+{
     id: "0013",
     name: "Craft tables: replace legacy bb13b8a-era shapes with the v5.1.3 craft surface shapes",
     sql: `

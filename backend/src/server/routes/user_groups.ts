@@ -38,16 +38,16 @@
  */
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { getAuth, requireAuth } from "../../auth/middleware";
-import { Permission, getEffectivePermissions } from "../../auth/permissions";
-import { query, queryOne, withTransaction } from "../../db/client";
+import { getAuth, requireAuth } from "../../auth/middleware.js";
+import { Permission, getEffectivePermissions } from "../../auth/permissions.js";
+import { query, queryOne, withTransaction } from "../../db/client.js";
 import {
   ForbiddenError,
   InvalidRequestError,
   NotFoundError,
-} from "../../utils/errors";
-import { getLogger } from "../../utils/logger";
-import type { User } from "../../types/domain";
+} from "../../utils/errors.js";
+import { getLogger } from "../../utils/logger.js";
+import type { User } from "../../types/domain.js";
 
 const logger = getLogger("server.routes.user_groups");
 

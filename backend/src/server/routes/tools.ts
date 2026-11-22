@@ -14,13 +14,13 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { getLogger } from "../../utils/logger";
-import { InvalidRequestError, NotFoundError } from "../../utils/errors";
-import { getTool, listTools } from "../../tools/registry";
-import { registerBuiltInTools } from "../../tools/built_in_tools";
-import type { ToolContext } from "../../tools/interface";
-import { getAuthContext } from "./chat";
-import { catalogMcpToolSnapshots } from "./mcp_catalog_view";
+import { getLogger } from "../../utils/logger.js";
+import { InvalidRequestError, NotFoundError } from "../../utils/errors.js";
+import { getTool, listTools } from "../../tools/registry.js";
+import { registerBuiltInTools } from "../../tools/built_in_tools.js";
+import type { ToolContext } from "../../tools/interface.js";
+import { getAuthContext } from "./chat.js";
+import { catalogMcpToolSnapshots } from "./mcp_catalog_view.js";
 
 const logger = getLogger("routes.tools");
 

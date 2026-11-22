@@ -14,7 +14,7 @@
  *   - toJSONL()                              — newline-delimited JSON replay
  */
 
-import type { Packet, PacketType } from "./models";
+import type { Packet, PacketType } from "./models.js";
 
 export type PacketSubscriber = (packet: Packet) => void;
 
@@ -64,7 +64,13 @@ export class StreamEmitter {
    * Emit a structured packet: the payload object is JSON-serialized into the
    * `packet` field (port of the classic `Packet(packet=obj.model_dump_json())`).
    */
-  sendObject(type: PacketType, ind: number, obj: unknown, message = "", tab = 0): Packet {
+  sendObject(
+    type: PacketType,
+    ind: number,
+    obj: unknown,
+    message = "",
+    tab = 0,
+  ): Packet {
     return this.publish(type, ind, message, JSON.stringify(obj), tab);
   }
 
@@ -99,9 +105,9 @@ export class StreamEmitter {
       seq: this.seq,
       packet: packetJson,
       ind,
-      ...(tab !== 0 ? { tab } : {}),
       type,
       message,
+      ...(tab !== 0 ? { tab } : {}),
     };
     this.packets.push(packet);
     if (this.subscriber) {

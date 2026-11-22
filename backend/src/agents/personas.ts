@@ -14,9 +14,9 @@
  * (backend/onyx/prompts/chat_prompts.py lines 28-53) when the table is empty.
  */
 
-import { query, queryOne } from "../db/client";
-import type { Persona } from "../types/domain";
-import { NotFoundError } from "../utils/errors";
+import { query, queryOne } from "../db/client.js";
+import type { Persona } from "../types/domain.js";
+import { NotFoundError } from "../utils/errors.js";
 
 // Row type is a type alias so it satisfies pg's QueryResultRow constraint.
 type PersonaRow = {

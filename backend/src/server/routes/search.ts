@@ -13,12 +13,12 @@
  */
 import { Hono } from "hono";
 import { z } from "zod";
-import { searchDocuments } from "../../search/orchestration";
-import { DOCUMENT_INDEX_NAME } from "../../indexing/document_index/opensearch_index";
-import { countByQuery, getClusterHealth, indexExists } from "../../vector_db/client";
-import { InvalidRequestError } from "../../utils/errors";
-import { getLogger } from "../../utils/logger";
-import type { SearchDoc } from "../../types/domain";
+import { searchDocuments } from "../../search/orchestration.js";
+import { DOCUMENT_INDEX_NAME } from "../../indexing/document_index/opensearch_index.js";
+import { countByQuery, getClusterHealth, indexExists } from "../../vector_db/client.js";
+import { InvalidRequestError } from "../../utils/errors.js";
+import { getLogger } from "../../utils/logger.js";
+import type { SearchDoc } from "../../types/domain.js";
 
 const logger = getLogger("server.routes.search");
 

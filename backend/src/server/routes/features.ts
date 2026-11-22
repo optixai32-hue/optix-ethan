@@ -21,9 +21,9 @@
  *   - GET /chat/incognito-availability -> bool
  */
 import { Hono } from "hono";
-import { query } from "../../db/client";
-import { requireAuth } from "../../auth/middleware";
-import { catalogMcpServers } from "./mcp_catalog_view";
+import { query } from "../../db/client.js";
+import { requireAuth } from "../../auth/middleware.js";
+import { catalogMcpServers } from "./mcp_catalog_view.js";
 
 export const featuresRoutes = new Hono();
 
@@ -155,12 +155,26 @@ featuresRoutes.get("/enterprise-settings", requireAuth, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// Voice status (server/manage/voice/user_api.py get_voice_status)
+// Voice status moved to voice.ts (TTS provisioned via the z-ai audio surface).
 // ---------------------------------------------------------------------------
 
-featuresRoutes.get("/voice/status", requireAuth, async (c) => {
-  // VoiceStatusResponse — no STT/TTS providers configured in this port.
-  return c.json({ stt_enabled: false, tts_enabled: false });
+// ---------------------------------------------------------------------------
+// Application logo (web/src/app/app/components/AppPopup.tsx and other
+// consumers request /api/enterprise-settings/logo; the Python backend serves
+// the uploaded file). This port serves the default Onyx mark — the same SVG
+// the frontend ships at web/public/logo.svg — so every <img> consumer renders
+// the real logo instead of a broken image.
+// ---------------------------------------------------------------------------
+
+const ONYX_LOGO_SVG = `<svg viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M27.9998 0L10.8691 7.76944L27.9998 15.5389L45.1305 7.76944L27.9998 0ZM27.9998 40.4611L10.8691 48.2306L27.9998 56L45.1305 48.2306L27.9998 40.4611ZM48.2309 10.8691L56.0001 28.0003L48.2309 45.1314L40.4617 28.0003L48.2309 10.8691ZM15.5385 28.0001L7.76923 10.869L0 28.0001L7.76923 45.1313L15.5385 28.0001Z" fill="black"/></svg>`;
+
+featuresRoutes.get("/enterprise-settings/logo", (c) => {
+  return new Response(ONYX_LOGO_SVG, {
+    headers: {
+      "Content-Type": "image/svg+xml",
+      "Cache-Control": "public, max-age=86400",
+    },
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -187,3 +201,36 @@ featuresRoutes.get("/chat/incognito-availability", requireAuth, async (c) => {
   // Incognito chat requires an ephemeral-model provider; not configured here.
   return c.json(false);
 });
+
+// GET /voice/status — VoiceStatusResponse
+// (server/manage/voice/user_api.py get_voice_status; consumer
+// web/src/lib/voice/hooks.ts). No STT/TTS providers configured in this port.
+featuresRoutes.get("/voice/status", requireAuth, async (c) => {
+  return c.json({ stt_enabled: false, tts_enabled: false });
+});
+
+// GET /enterprise-settings/custom-analytics-script — string | null
+// (consumer: web/src/lib/analytics/hooks.ts useCustomAnalyticsScript via
+// web/src/lib/swr-keys.ts customAnalyticsScript + the SSR settings fetch in
+// web/src/lib/settings/svcSS.ts; the script text is injected into a <script>
+// tag by web/src/lib/analytics/shared.tsx). No custom analytics configured
+// in this deployment: JSON null.
+featuresRoutes.get(
+  "/enterprise-settings/custom-analytics-script",
+  requireAuth,
+  (c) => {
+    return c.json(null);
+  },
+);
+
+// GET /user/projects/session/:sessionId/files — ProjectFile[]
+// (consumer: web/src/lib/projects/svc.ts getProjectFilesForSession; the
+// frontend treats a non-OK response as an empty list). The projects feature
+// is not deployed in this port: every session has no project files.
+featuresRoutes.get(
+  "/user/projects/session/:sessionId/files",
+  requireAuth,
+  (c) => {
+    return c.json([]);
+  },
+);

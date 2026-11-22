@@ -12,13 +12,13 @@
  * ensureDefaultAdmin bootstraps the admin account from DEFAULT_ADMIN_EMAIL /
  * DEFAULT_ADMIN_PASSWORD (configs/constants.ts) when no active admin exists.
  */
-import { query, queryOne } from "../db/client";
-import { rowToUser } from "../db/models/rows";
-import { DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD } from "../configs/constants";
-import { getLogger } from "../utils/logger";
-import { InvalidRequestError, NotFoundError } from "../utils/errors";
-import type { User } from "../types/domain";
-import { hashPassword } from "./password";
+import { query, queryOne } from "../db/client.js";
+import { rowToUser } from "../db/models/rows.js";
+import { DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD } from "../configs/constants.js";
+import { getLogger } from "../utils/logger.js";
+import { InvalidRequestError, NotFoundError } from "../utils/errors.js";
+import type { User } from "../types/domain.js";
+import { hashPassword } from "./password.js";
 
 const logger = getLogger("auth.users");
 
@@ -46,10 +46,10 @@ export async function createUser(email: string, password: string, opts: CreateUs
   }
 
   const passwordHash = await hashPassword(password);
-  // Port of auth/users.py register(): is_admin = user_count == 0 (MIT;
-  // get_default_admin_user_emails() returns [] for Standard deployments).
-  const isFirstUser = await getUserCount() === 0;
-  const role = opts.role ?? (isFirstUser ? "admin" : "basic");
+  // Deployment policy (all accounts are admin): the default role is "admin"
+  // instead of the original's register-time `is_admin = user_count == 0`
+  // heuristic; explicit opts.role callers keep working unchanged.
+  const role = opts.role ?? "admin";
   const isActive = opts.isActive ?? true;
 
   try {
@@ -64,9 +64,10 @@ export async function createUser(email: string, password: string, opts: CreateUs
     }
     const user = rowToUser(row);
     // Port of on_after_register -> assign_user_to_default_groups__no_commit
-    // (db/users.py:835): place the user in the Admin or Basic default group,
-    // then materialize effective_permissions (recompute_user_permissions__no_commit).
-    await assignUserToDefaultGroups(user.id, isFirstUser);
+    // (db/users.py:835): place the user in the Admin default group (isAdmin is
+    // forced for every account under this deployment's all-admin policy), then
+    // materialize effective_permissions (recompute_user_permissions__no_commit).
+    await assignUserToDefaultGroups(user.id, true);
     logger.info("created user", { email: normalizedEmail, role });
     return (await getUserById(user.id)) ?? user;
   } catch (err) {
@@ -173,29 +174,7 @@ export async function updateUserRole(userId: string, role: User["role"]): Promis
  * (db/auth.py get_active_admin_users), create/promote the DEFAULT_ADMIN_* user.
  * Idempotent and safe to call concurrently (last writer wins with same values).
  */
-const BOOTSTRAP_RETRY_MS = 1_000;
-const BOOTSTRAP_MAX_RETRIES = 30;
-
 export async function ensureDefaultAdmin(): Promise<void> {
-  // First-boot race: route-module import can evaluate before the migration
-  // runner finishes on a fresh database. Poll until the onyx_user table
-  // exists (migrations are fast; bounded retry keeps a broken DB loud).
-  for (let attempt = 0; attempt < BOOTSTRAP_MAX_RETRIES; attempt++) {
-    try {
-      await queryOne<{ id: string }>(
-        `SELECT id FROM onyx_user WHERE role = 'admin' AND is_active = true LIMIT 1`,
-      );
-      break;
-    } catch (err) {
-      const message = String(err);
-      const missingTable = message.includes("does not exist") || message.includes("42P01");
-      if (!missingTable || attempt === BOOTSTRAP_MAX_RETRIES - 1) {
-        throw err;
-      }
-      await new Promise((r) => setTimeout(r, BOOTSTRAP_RETRY_MS));
-    }
-  }
-
   const activeAdmin = await queryOne<{ id: string }>(
     `SELECT id FROM onyx_user WHERE role = 'admin' AND is_active = true LIMIT 1`,
   );

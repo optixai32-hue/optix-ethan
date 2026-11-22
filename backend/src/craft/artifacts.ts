@@ -27,10 +27,10 @@
  * carry no recorded owner and are readable by any authenticated user.
  */
 import { randomUUID } from "node:crypto";
-import { query, queryOne } from "../db/client";
-import { ForbiddenError, InvalidRequestError, NotFoundError } from "../utils/errors";
-import { getLogger } from "../utils/logger";
-import type { Artifact } from "../types/domain";
+import { query, queryOne } from "../db/client.js";
+import { ForbiddenError, InvalidRequestError, NotFoundError } from "../utils/errors.js";
+import { getLogger } from "../utils/logger.js";
+import type { Artifact } from "../types/domain.js";
 
 const logger = getLogger("craft.artifacts");
 

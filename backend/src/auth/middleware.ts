@@ -16,10 +16,10 @@
  */
 import type { Context, MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
-import { SESSION_COOKIE_NAME } from "../configs/constants";
-import { authenticateApiKey } from "./api_keys";
-import { getSessionUser } from "./sessions";
-import type { AuthContext } from "../types/domain";
+import { SESSION_COOKIE_NAME } from "../configs/constants.js";
+import { authenticateApiKey } from "./api_keys.js";
+import { getSessionUser } from "./sessions.js";
+import type { AuthContext } from "../types/domain.js";
 
 // Make c.get("auth") / c.set("auth", ...) type-safe across the app.
 declare module "hono" {

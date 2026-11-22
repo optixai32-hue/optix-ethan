@@ -17,7 +17,7 @@
  * section's windows, exactly where the Python SentenceChunker applied it.
  */
 import { decode, encode } from "gpt-tokenizer";
-import { DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE } from "../configs/constants";
+import { DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE } from "../configs/constants.js";
 
 /** Token count using the o200k_base tokenizer (BaseTokenizer.encode in Onyx). */
 export function tokenizeCount(text: string): number {

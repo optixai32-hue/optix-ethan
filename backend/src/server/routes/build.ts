@@ -80,18 +80,18 @@ import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
-import { query, queryOne } from "../../db/client";
-import { getAuth, requireAuth } from "../../auth/middleware";
-import type { User } from "../../types/domain";
-import { getLogger } from "../../utils/logger";
+import { query, queryOne } from "../../db/client.js";
+import { getAuth, requireAuth } from "../../auth/middleware.js";
+import type { User } from "../../types/domain.js";
+import { getLogger } from "../../utils/logger.js";
 import {
   InvalidRequestError,
   NotFoundError,
   UnauthorizedError,
   UnsupportedFeatureError,
-} from "../../utils/errors";
-import { getLLMProvider } from "../../llm/factory";
-import type { LLMMessage, LLMStreamEvent } from "../../llm/types";
+} from "../../utils/errors.js";
+import { getLLMProvider } from "../../llm/factory.js";
+import type { LLMMessage, LLMStreamEvent } from "../../llm/types.js";
 
 const logger = getLogger("server.routes.build");
 
@@ -593,133 +593,6 @@ function turnEventStream(turn: BuildTurn): Response {
   });
 }
 
-/**
- * Serverless cross-instance fallback for the turn-events attach. The turn
- * registry lives per function instance; Vercel may serve the send-message
- * POST and this events GET on different instances (or the originating
- * instance may have been recycled). When the turn id is unknown here,
- * synthesize the packet stream from the DB-persisted transcript instead of
- * 404ing: poll build_message for the assistant row of the latest turn and
- * emit agent_message + turn_completed when it lands (the generation runs on
- * whichever instance accepted the POST and persists there on completion).
- * Bounded wait, then a terminal turn_completed FAILED so the client settles.
- */
-const SYNTH_POLL_INTERVAL_MS = 1_500;
-const SYNTH_MAX_WAIT_MS = 55_000;
-
-async function synthesizedTurnEventStream(
-  sessionId: string,
-  turnId: string
-): Promise<Response> {
-  const encoder = new TextEncoder();
-  const startedAt = Date.now();
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      let closed = false;
-      const push = (json: string) => {
-        if (closed) return;
-        try {
-          controller.enqueue(encoder.encode(sseFrame(json)));
-        } catch {
-          closed = true;
-        }
-      };
-      const heartbeat = setInterval(() => {
-        if (closed) return;
-        try {
-          // SSE comment line — processSSEStream ignores non-data lines.
-          controller.enqueue(encoder.encode(": ping\n\n"));
-        } catch {
-          closed = true;
-        }
-      }, HEARTBEAT_INTERVAL_MS);
-      try {
-        // The latest user row of this session marks the turn being attached
-        // (the client only attaches to the active — i.e. latest — turn;
-        // historical turns render from the persisted transcript).
-        const latestUser = await queryOne<{ turn_id: number | null; content: string }>(
-          `SELECT turn_id, content FROM build_message
-            WHERE session_id = $1 AND role = 'user'
-            ORDER BY id DESC LIMIT 1`,
-          [sessionId],
-        );
-        const turnIndex = latestUser?.turn_id ?? 0;
-        if (latestUser) {
-          push(JSON.stringify({ type: "user_message", content: latestUser.content }));
-        }
-        let assistant: { content: string } | null = null;
-        while (Date.now() - startedAt < SYNTH_MAX_WAIT_MS) {
-          if (closed) return;
-          const row = await queryOne<{ content: string }>(
-            `SELECT content FROM build_message
-              WHERE session_id = $1 AND role = 'assistant' AND turn_id = $2
-              ORDER BY id DESC LIMIT 1`,
-            [sessionId, turnIndex],
-          );
-          if (row) {
-            assistant = row;
-            break;
-          }
-          await new Promise((r) => setTimeout(r, SYNTH_POLL_INTERVAL_MS));
-        }
-        if (closed) return;
-        if (assistant) {
-          push(JSON.stringify({ type: "agent_message", content: assistant.content }));
-          push(
-            JSON.stringify({
-              type: "turn_completed",
-              session_id: sessionId,
-              turn_id: turnId,
-              turn_index: turnIndex,
-              status: "SUCCEEDED",
-              error_detail: null,
-            }),
-          );
-        } else {
-          push(
-            JSON.stringify({
-              type: "turn_completed",
-              session_id: sessionId,
-              turn_id: turnId,
-              turn_index: turnIndex,
-              status: "FAILED",
-              error_detail: "Turn state unavailable (serverless instance recycled)",
-            }),
-          );
-        }
-      } catch (err) {
-        if (!closed) {
-          push(
-            JSON.stringify({
-              type: "turn_completed",
-              session_id: sessionId,
-              turn_id: turnId,
-              turn_index: 0,
-              status: "FAILED",
-              error_detail: `Turn replay failed: ${String(err)}`,
-            }),
-          );
-        }
-      } finally {
-        clearInterval(heartbeat);
-        try {
-          controller.close();
-        } catch {
-          // already closed
-        }
-      }
-    },
-  });
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    },
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Build agent generation (plain streamed LLM completion — no tools)
 // ---------------------------------------------------------------------------
@@ -1188,6 +1061,133 @@ buildRoutes.get("/sessions/:id/turns/:turnId", requireAuth, async (c) => {
  * client parses with processSSEStream + parsePacket. Replays the buffered
  * packets, streams live ones, and ends after the terminal turn_completed.
  */
+/**
+ * Serverless cross-instance fallback for the turn-events attach. The turn
+ * registry lives per function instance; Vercel may serve the send-message
+ * POST and this events GET on different instances (or the originating
+ * instance may have been recycled). When the turn id is unknown here,
+ * synthesize the packet stream from the DB-persisted transcript instead of
+ * 404ing: poll build_message for the assistant row of the latest turn and
+ * emit agent_message + turn_completed when it lands (the generation runs on
+ * whichever instance accepted the POST and persists there on completion).
+ * Bounded wait, then a terminal turn_completed FAILED so the client settles.
+ */
+const SYNTH_POLL_INTERVAL_MS = 1_500;
+const SYNTH_MAX_WAIT_MS = 55_000;
+
+async function synthesizedTurnEventStream(
+  sessionId: string,
+  turnId: string
+): Promise<Response> {
+  const encoder = new TextEncoder();
+  const startedAt = Date.now();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let closed = false;
+      const push = (json: string) => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(sseFrame(json)));
+        } catch {
+          closed = true;
+        }
+      };
+      const heartbeat = setInterval(() => {
+        if (closed) return;
+        try {
+          // SSE comment line — processSSEStream ignores non-data lines.
+          controller.enqueue(encoder.encode(": ping\n\n"));
+        } catch {
+          closed = true;
+        }
+      }, HEARTBEAT_INTERVAL_MS);
+      try {
+        // The latest user row of this session marks the turn being attached
+        // (the client only attaches to the active — i.e. latest — turn;
+        // historical turns render from the persisted transcript).
+        const latestUser = await queryOne<{ turn_id: number | null; content: string }>(
+          `SELECT turn_id, content FROM build_message
+            WHERE session_id = $1 AND role = 'user'
+            ORDER BY id DESC LIMIT 1`,
+          [sessionId],
+        );
+        const turnIndex = latestUser?.turn_id ?? 0;
+        if (latestUser) {
+          push(JSON.stringify({ type: "user_message", content: latestUser.content }));
+        }
+        let assistant: { content: string } | null = null;
+        while (Date.now() - startedAt < SYNTH_MAX_WAIT_MS) {
+          if (closed) return;
+          const row = await queryOne<{ content: string }>(
+            `SELECT content FROM build_message
+              WHERE session_id = $1 AND role = 'assistant' AND turn_id = $2
+              ORDER BY id DESC LIMIT 1`,
+            [sessionId, turnIndex],
+          );
+          if (row) {
+            assistant = row;
+            break;
+          }
+          await new Promise((r) => setTimeout(r, SYNTH_POLL_INTERVAL_MS));
+        }
+        if (closed) return;
+        if (assistant) {
+          push(JSON.stringify({ type: "agent_message", content: assistant.content }));
+          push(
+            JSON.stringify({
+              type: "turn_completed",
+              session_id: sessionId,
+              turn_id: turnId,
+              turn_index: turnIndex,
+              status: "SUCCEEDED",
+              error_detail: null,
+            }),
+          );
+        } else {
+          push(
+            JSON.stringify({
+              type: "turn_completed",
+              session_id: sessionId,
+              turn_id: turnId,
+              turn_index: turnIndex,
+              status: "FAILED",
+              error_detail: "Turn state unavailable (serverless instance recycled)",
+            }),
+          );
+        }
+      } catch (err) {
+        if (!closed) {
+          push(
+            JSON.stringify({
+              type: "turn_completed",
+              session_id: sessionId,
+              turn_id: turnId,
+              turn_index: 0,
+              status: "FAILED",
+              error_detail: `Turn replay failed: ${String(err)}`,
+            }),
+          );
+        }
+      } finally {
+        clearInterval(heartbeat);
+        try {
+          controller.close();
+        } catch {
+          // already closed
+        }
+      }
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
+}
+
 buildRoutes.get("/sessions/:id/turns/:turnId/events", requireAuth, async (c) => {
   const user = currentUser(c);
   const session = await getOwnedSession(user.id, c.req.param("id"));

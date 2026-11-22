@@ -20,10 +20,14 @@
  */
 import { Hono } from "hono";
 import { z } from "zod";
-import { query, queryOne } from "../../db/client";
-import { getAuth, requireAuth, requireAdmin } from "../../auth/middleware";
-import { InvalidRequestError, NotFoundError } from "../../utils/errors";
-import { getLogger } from "../../utils/logger";
+import { query, queryOne } from "../../db/client.js";
+import { getAuth, requireAuth, requireAdmin } from "../../auth/middleware.js";
+import { InvalidRequestError, NotFoundError } from "../../utils/errors.js";
+import { getLogger } from "../../utils/logger.js";
+import {
+  KILO_DEFAULT_MODEL_NAME,
+  KILO_MODELS,
+} from "../../llm/kilo_models.js";
 
 const logger = getLogger("routes.llm");
 
@@ -74,6 +78,9 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   portkey: "Portkey",
   vercel_ai_gateway: "Vercel AI Gateway",
   openai_compatible_: "OpenAI Compatible",
+  // Added provider (not part of upstream constants.py): the Kilo AI gateway,
+  // served by llm/providers/kilo.ts and seeded by llm/setup.ts.
+  kilo: "Kilo Gateway",
 };
 
 // Port of llm/well_known_providers/recommended-models.json (v1.24) — the
@@ -173,6 +180,18 @@ const RECOMMENDED_MODELS: Record<
     additional_visible_models: [
       { name: "anthropic.claude-sonnet-4-5", display_name: "Claude Sonnet 4.5", supports_image_input: true },
     ],
+  },
+  // Added provider (not part of upstream recommended-models.json): mirrors
+  // llm/kilo_models.ts so the picker shows proper display names for the
+  // Kilo gateway catalog (nvidia/nemotron-3-ultra-550b-a55b:free default).
+  kilo: {
+    default_model: KILO_DEFAULT_MODEL_NAME,
+    additional_visible_models: KILO_MODELS.map((model) => ({
+      name: model.name,
+      display_name: model.displayName,
+      ...(model.supportsImageInput ? { supports_image_input: true } : {}),
+      ...(model.supportsReasoning ? { supports_reasoning: true } : {}),
+    })),
   },
 };
 

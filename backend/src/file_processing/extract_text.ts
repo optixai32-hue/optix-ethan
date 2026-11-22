@@ -26,7 +26,7 @@
  */
 import { inflateSync } from "node:zlib";
 import { parse, type HTMLElement, type Node, type TextNode } from "node-html-parser";
-import { getLogger } from "../utils/logger";
+import { getLogger } from "../utils/logger.js";
 
 const logger = getLogger("file_processing.extract_text");
 

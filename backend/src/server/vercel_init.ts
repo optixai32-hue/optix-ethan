@@ -3,9 +3,9 @@
  * LLM provider seeding (equivalent of the Bun entry's main() preamble).
  * Idempotent — migrations are IF NOT EXISTS based and seeding checks the table.
  */
-import { getLogger } from "../utils/logger";
-import { runMigrations } from "../db/migrations/runner";
-import { ensureDevPresetLlmProvider, ensureKiloProvider } from "../llm/setup";
+import { getLogger } from "../utils/logger.js";
+import { runMigrations } from "../db/migrations/runner.js";
+import { ensureDevPresetLlmProvider, ensureKiloProvider } from "../llm/setup.js";
 
 const logger = getLogger("api.vercel");
 
@@ -15,6 +15,8 @@ async function doInit(): Promise<void> {
   try {
     await runMigrations();
     await ensureDevPresetLlmProvider();
+    // Kilo gateway seed (idempotent); covered by the same swallow-and-continue
+    // catch below — a failed optional-provider seed must not fail the request.
     try {
       // Kilo gateway seed: boot must survive a failed seed (the provider is
       // optional and env-gated at call time), so a throw here is logged and
