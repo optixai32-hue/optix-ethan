@@ -23,6 +23,7 @@
 import { Hono } from "hono";
 import { query } from "../../db/client";
 import { requireAuth } from "../../auth/middleware";
+import { catalogMcpServers } from "./mcp_catalog_view";
 
 export const featuresRoutes = new Hono();
 
@@ -41,15 +42,27 @@ featuresRoutes.get("/input_prompt", requireAuth, async (c) => {
 // ---------------------------------------------------------------------------
 
 featuresRoutes.get("/mcp/servers", requireAuth, async (c) => {
-  // get_mcp_servers_for_user — no MCP server rows in this port yet.
-  return c.json({ mcp_servers: [] });
+  // get_mcp_servers_for_user — cloud-parity plugin catalog (see
+  // mcp_catalog_view.ts): every entry is an available-to-connect server.
+  return c.json({ mcp_servers: catalogMcpServers() });
+});
+
+featuresRoutes.get("/mcp/servers/craft", requireAuth, async (c) => {
+  // Craft-surface listing (SWR_KEYS.mcpServersCraft): catalog entries marked
+  // available_in_craft.
+  return c.json({
+    mcp_servers: catalogMcpServers().filter(
+      (s) => (s as Record<string, unknown>).available_in_craft === true,
+    ),
+  });
 });
 
 featuresRoutes.get("/mcp/servers/persona/:assistantId", requireAuth, async (c) => {
-  // get_mcp_servers_for_assistant — persona-scoped listing; no servers yet.
+  // get_mcp_servers_for_assistant — persona-scoped listing; the default
+  // assistant exposes the full catalog (no per-agent restriction in this port).
   return c.json({
     assistant_id: c.req.param("assistantId"),
-    mcp_servers: [],
+    mcp_servers: catalogMcpServers(),
   });
 });
 

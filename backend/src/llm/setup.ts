@@ -17,6 +17,13 @@ import {
   DEFAULT_LLM_PROVIDER,
   DEFAULT_STRONG_MODEL,
 } from "../configs/constants";
+import {
+  KILO_PROVIDER_ID,
+  KILO_DEFAULT_MODEL_NAME,
+  KILO_MODELS,
+  type KiloModel,
+} from "./kilo_models";
+import { resolveKiloGatewayBase } from "./providers/kilo";
 
 const logger = getLogger("setup.llm");
 
@@ -78,5 +85,94 @@ export async function ensureDevPresetLlmProvider(): Promise<void> {
   logger.info("seeded dev preset llm provider", {
     provider: providerName,
     model: modelName,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Kilo Gateway provider bootstrap (added provider — no upstream setup.py
+// counterpart; follows the ensureDevPresetLlmProvider seeding pattern).
+// ---------------------------------------------------------------------------
+
+interface SeedProviderRow {
+  id: number;
+}
+
+/** Insert one visible chat model_configuration row per Kilo catalog entry. */
+async function insertKiloModelConfigurations(
+  providerId: number,
+  models: readonly KiloModel[],
+): Promise<void> {
+  for (const model of models) {
+    await query(
+      `INSERT INTO model_configuration (llm_provider_id, name, is_visible,
+                                        supports_chat, supports_image_input,
+                                        supports_reasoning, max_input_tokens)
+       VALUES ($1, $2, true, true, $3, $4, NULL)`,
+      [providerId, model.name, model.supportsImageInput ?? false, model.supportsReasoning ?? false],
+    );
+  }
+}
+
+/**
+ * Kilo Gateway provider bootstrap (added provider — no upstream setup.py
+ * counterpart; follows the ensureDevPresetLlmProvider seeding pattern).
+ *
+ * Idempotent: if an llm_provider row with provider = 'kilo' exists and
+ * already has a model_configuration row for every KILO_MODELS entry, this is
+ * a no-op. Otherwise the provider row (missing) and/or the missing
+ * model_configuration rows are inserted — never duplicated, since the table
+ * pair has no unique constraint on (provider / llm_provider_id, name).
+ *
+ * The provider row stores api_key NULL (runtime auth is resolved from
+ * KILO_GATEWAY_API_KEY / ONYX_OPENAI_API_KEY env at call time by
+ * llm/providers/kilo.ts) and api_base equal to the provider class's base
+ * resolution. is_default stays false — the default provider row keeps the
+ * default slot.
+ */
+export async function ensureKiloProvider(): Promise<void> {
+  const existing = await queryOne<SeedProviderRow>(
+    `SELECT id FROM llm_provider WHERE provider = $1 ORDER BY id LIMIT 1`,
+    [KILO_PROVIDER_ID],
+  );
+
+  if (existing) {
+    // Provider row exists: backfill only the missing model_configuration rows.
+    const present = await query<{ name: string }>(
+      `SELECT name FROM model_configuration WHERE llm_provider_id = $1`,
+      [existing.id],
+    );
+    const presentNames = new Set(present.rows.map((row) => row.name));
+    const missing = KILO_MODELS.filter((model) => !presentNames.has(model.name));
+    if (missing.length === 0) {
+      logger.debug("kilo gateway provider fully seeded; skipping");
+      return;
+    }
+    await insertKiloModelConfigurations(existing.id, missing);
+    logger.info("backfilled missing kilo gateway model configurations", {
+      models: missing.map((model) => model.name),
+    });
+    return;
+  }
+
+  const inserted = await queryOne<SeedProviderRow>(
+    // Column set matches this repo's llm_provider schema (no api_version /
+    // deployment_name columns in the ported DDL).
+    `INSERT INTO llm_provider (name, provider, api_key, api_base,
+                               default_model_name, is_default)
+     VALUES ($1, $2, NULL, $3, $4, false)
+     RETURNING id`,
+    ["Kilo Gateway", KILO_PROVIDER_ID, resolveKiloGatewayBase(), KILO_DEFAULT_MODEL_NAME],
+  );
+  if (!inserted) {
+    logger.warning("failed to seed kilo gateway llm provider");
+    return;
+  }
+
+  await insertKiloModelConfigurations(inserted.id, KILO_MODELS);
+  logger.info("seeded kilo gateway llm provider", {
+    provider: KILO_PROVIDER_ID,
+    api_base: resolveKiloGatewayBase(),
+    default_model: KILO_DEFAULT_MODEL_NAME,
+    models: KILO_MODELS.length,
   });
 }

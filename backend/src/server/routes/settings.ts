@@ -34,7 +34,11 @@ settingsRoutes.get("/settings", requireAuth, (c) => {
     application_status: "active",
     anonymous_user_enabled: null,
     invite_only_enabled: false,
-    deep_research_enabled: null,
+    // Enterprise/cloud parity: Deep Research surfaced in the chat input.
+    // The frontend gates the toggle on combinedSettingsData?.deep_research_enabled
+    // (AppInputBar.tsx showDeepResearch) — null relies on the ?? true fallback
+    // in one code path but explicit true keeps every check positive.
+    deep_research_enabled: true,
     multi_model_chat_enabled: true,
     search_ui_enabled: true,
     auto_detect_search_filters: true,

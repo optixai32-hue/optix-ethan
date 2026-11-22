@@ -5,7 +5,7 @@
  */
 import { getLogger } from "../utils/logger";
 import { runMigrations } from "../db/migrations/runner";
-import { ensureDevPresetLlmProvider } from "../llm/setup";
+import { ensureDevPresetLlmProvider, ensureKiloProvider } from "../llm/setup";
 
 const logger = getLogger("api.vercel");
 
@@ -15,6 +15,14 @@ async function doInit(): Promise<void> {
   try {
     await runMigrations();
     await ensureDevPresetLlmProvider();
+    try {
+      // Kilo gateway seed: boot must survive a failed seed (the provider is
+      // optional and env-gated at call time), so a throw here is logged and
+      // swallowed.
+      await ensureKiloProvider();
+    } catch (err) {
+      logger.error("kilo gateway llm seed failed (continuing)", { error: String(err) });
+    }
     logger.info("serverless init complete (migrations + llm seed)");
   } catch (err) {
     // Never fail the request because of init: migrations may race on cold

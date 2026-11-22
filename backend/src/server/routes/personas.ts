@@ -18,6 +18,7 @@ import { z } from "zod";
 import { getLogger } from "../../utils/logger";
 import { InvalidRequestError } from "../../utils/errors";
 import { getAuthContext } from "./chat";
+import { builtinToolSnapshots } from "./tools";
 import { query, queryOne } from "../../db/client";
 import type { User } from "../../types/domain";
 
@@ -50,6 +51,20 @@ function isAdmin(user: User): boolean {
   return user.role === "admin";
 }
 
+/** Built-in tools attached to the default assistant (persona 0).
+ *  Mirrors upstream behavior where the default assistant has the built-in
+ *  tool set attached (SearchTool / WebSearchTool / ImageGenerationTool) via
+ *  persona__tool; the frontend uses these to drive the Deep Research toggle
+ *  (hasSearchToolsAvailable), the Manage-actions popover and the Plugins
+ *  catalog. */
+function personaTools(): Record<string, unknown>[] {
+  try {
+    return builtinToolSnapshots();
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Port of MinimalPersonaSnapshot.from_model + list-endpoint permission
  * stamping for a fresh single-tenant deployment: no labels, no owner
@@ -66,7 +81,7 @@ function toMinimalPersonaSnapshot(
     id: row.id,
     name: row.name,
     description: row.description,
-    tools: [],
+    tools: personaTools(),
     starter_messages: row.starter_messages ?? null,
     document_sets: [],
     hierarchy_node_count: 0,

@@ -542,4 +542,41 @@ ALTER TABLE onyx_user ADD COLUMN IF NOT EXISTS preferences JSONB NULL;
     name: "EE admin surfaces: user-group incognito flag, standard answers, scim_token, usage_report",
     sql: EE_ADMIN_SCHEMA,
   },
+  {
+    id: "0012",
+    name: "Craft build sessions (v5.1.3 craft surface)",
+    sql: `
+CREATE TABLE IF NOT EXISTS build_session (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID REFERENCES onyx_user(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL DEFAULT 'New Build',
+  status      TEXT NOT NULL DEFAULT 'ready',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS build_message (
+  id         SERIAL PRIMARY KEY,
+  session_id UUID REFERENCES build_session(id) ON DELETE CASCADE,
+  role       TEXT NOT NULL CHECK (role IN ('user','assistant')),
+  content    TEXT NOT NULL,
+  turn_id    INTEGER NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- build_message.message_metadata — task-10-craft addition to the base block:
+-- the craft frontend materializes the reloaded assistant transcript ONLY from
+-- message_metadata (web/src/app/craft/hooks/useBuildSessionStore.ts
+-- convertMessagesToStreamItems drops assistant rows without it), so each
+-- assistant row persists its packet metadata ({type:"agent_message",
+-- content}) and each user row its {type:"user_message", content, attachments}.
+-- build_message.turn_id stays INTEGER: it stores the 0-based turn index —
+-- the same number reported as turn_index in the API responses. The opaque
+-- turn id (a uuid, string in the API) lives only in the in-memory turn
+-- registry of server/routes/build.ts; the frontend correlates persisted
+-- messages by turn_index, never by turn id (streamingTypes.ts
+-- ApiMessageResponse has no turn_id field).
+ALTER TABLE build_message ADD COLUMN IF NOT EXISTS message_metadata JSONB NULL;
+`,
+  },
 ];

@@ -25,6 +25,8 @@ import {
 import { getLogger } from "../utils/logger";
 import { ZaiProvider } from "./providers/zai";
 import { OpenaiCompatProvider } from "./providers/openai_compat";
+import { KiloProvider } from "./providers/kilo";
+import { KILO_PROVIDER_ID, KILO_DEFAULT_MODEL_NAME } from "./kilo_models";
 
 const logger = getLogger("llm.factory");
 
@@ -115,6 +117,11 @@ export async function getLLMProvider(
   if (providerId === "openai-compatible") {
     return new OpenaiCompatProvider(modelName ?? OPENAI_MODEL);
   }
+  if (providerId === KILO_PROVIDER_ID) {
+    // The gateway's OpenAI-compatible surface is per-call stateless, so a
+    // fresh provider carrying the selected model name is correct.
+    return new KiloProvider(modelName ?? KILO_DEFAULT_MODEL_NAME);
+  }
   if (providerId === "zai") {
     return getZaiSingleton(modelName ?? DEFAULT_FAST_MODEL);
   }
@@ -152,6 +159,9 @@ export function listLLMProviders(): { id: string; model: string; isDefault: bool
       model: OPENAI_MODEL,
       isDefault: DEFAULT_LLM_PROVIDER === "openai-compatible",
     },
+    // The Kilo gateway always appears — DB visibility is gated by the
+    // llm/setup.ts seed instead.
+    { id: KILO_PROVIDER_ID, model: KILO_DEFAULT_MODEL_NAME, isDefault: DEFAULT_LLM_PROVIDER === KILO_PROVIDER_ID },
   ];
 }
 

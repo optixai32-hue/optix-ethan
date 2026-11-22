@@ -10,13 +10,21 @@ import { API_PORT } from "./configs/constants";
 import { getLogger } from "./utils/logger";
 import { runMigrations } from "./db/migrations/runner";
 import { app } from "./server/app";
-import { ensureDevPresetLlmProvider } from "./llm/setup";
+import { ensureDevPresetLlmProvider, ensureKiloProvider } from "./llm/setup";
 
 const logger = getLogger("api.server");
 
 async function main() {
   await runMigrations();
   await ensureDevPresetLlmProvider();
+  try {
+    // Kilo gateway seed: boot must survive a failed seed (the provider is
+    // optional and env-gated at call time), so a throw here is logged and
+    // swallowed.
+    await ensureKiloProvider();
+  } catch (err) {
+    logger.error("kilo gateway llm seed failed (continuing)", { error: String(err) });
+  }
   Bun.serve({
     port: API_PORT,
     fetch: app.fetch,

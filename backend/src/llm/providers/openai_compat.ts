@@ -83,16 +83,19 @@ function contentOf(message: { content?: unknown } | undefined): string {
 }
 
 export class OpenaiCompatProvider implements LLMProvider {
-  readonly providerId = "openai-compatible";
+  // Widened to `string` so provider subclasses (Kilo gateway) can override.
+  readonly providerId: string = "openai-compatible";
   readonly modelName: string;
   private readonly apiBase: string;
   private readonly apiKey: string | null;
 
-  constructor(modelName?: string) {
+  constructor(modelName?: string, apiBase?: string, apiKey?: string | null) {
     // Resolved config (ONYX_OPENAI_* with KILO gateway fallbacks for the
     // single-deployment Vercel build) comes from configs/constants.ts.
-    this.apiBase = OPENAI_API_BASE.replace(/\/+$/, "");
-    this.apiKey = OPENAI_API_KEY;
+    // Optional overrides let provider subclasses (Kilo gateway) pass their
+    // own resolved base/key without touching the shared constants.
+    this.apiBase = (apiBase ?? OPENAI_API_BASE).replace(/\/+$/, "");
+    this.apiKey = apiKey !== undefined ? apiKey : OPENAI_API_KEY;
     this.modelName = modelName ?? OPENAI_MODEL;
     if (!this.apiBase) {
       // Constructed lazily; only fatal when actually invoked.

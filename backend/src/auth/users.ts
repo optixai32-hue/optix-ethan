@@ -173,7 +173,29 @@ export async function updateUserRole(userId: string, role: User["role"]): Promis
  * (db/auth.py get_active_admin_users), create/promote the DEFAULT_ADMIN_* user.
  * Idempotent and safe to call concurrently (last writer wins with same values).
  */
+const BOOTSTRAP_RETRY_MS = 1_000;
+const BOOTSTRAP_MAX_RETRIES = 30;
+
 export async function ensureDefaultAdmin(): Promise<void> {
+  // First-boot race: route-module import can evaluate before the migration
+  // runner finishes on a fresh database. Poll until the onyx_user table
+  // exists (migrations are fast; bounded retry keeps a broken DB loud).
+  for (let attempt = 0; attempt < BOOTSTRAP_MAX_RETRIES; attempt++) {
+    try {
+      await queryOne<{ id: string }>(
+        `SELECT id FROM onyx_user WHERE role = 'admin' AND is_active = true LIMIT 1`,
+      );
+      break;
+    } catch (err) {
+      const message = String(err);
+      const missingTable = message.includes("does not exist") || message.includes("42P01");
+      if (!missingTable || attempt === BOOTSTRAP_MAX_RETRIES - 1) {
+        throw err;
+      }
+      await new Promise((r) => setTimeout(r, BOOTSTRAP_RETRY_MS));
+    }
+  }
+
   const activeAdmin = await queryOne<{ id: string }>(
     `SELECT id FROM onyx_user WHERE role = 'admin' AND is_active = true LIMIT 1`,
   );
