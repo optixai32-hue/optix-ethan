@@ -699,11 +699,14 @@ export async function processMessage(
                 // (tab 0 stays reserved for the step's reasoning group).
                 const toolTab = callIndex + 1;
                 callIndex += 1;
-                emitter.sendObject("tool_call_debug", cycleTurn, {
-                  tool_call_id: toolCallId,
-                  tool_name: call.name,
-                  tool_args: parseToolArguments(call.arguments),
-                }, "", toolTab);
+                // NOTE (upstream fidelity): no pre-tool packet is emitted here.
+                // The tool's own opening packet (SearchToolStart etc.) must be
+                // the FIRST packet of its (turn, tab) group — the frontend
+                // classifies each timeline group by its first packet, and a
+                // non-protocol packet (e.g. a debug frame) before it would
+                // leave the group unclassified, hiding the step entirely. This
+                // is what silently swallowed the "Searching the web" timeline
+                // step while the search itself ran fine.
 
                 const tool = toolById.get(call.name) ?? getTool(call.name);
                 let content: string;

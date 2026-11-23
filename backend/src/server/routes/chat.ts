@@ -294,7 +294,12 @@ function parseStructuredModelValue(
  * exists (stale page state after a DB reseed), resolution FALLS THROUGH to
  * model_provider + model_version instead of silently resetting to the
  * deployment default — a failed lookup must never lose the user's explicit
- * model selection.
+ * model selection. The same fall-through applies when the row DOES exist but
+ * names a DIFFERENT model than the request's model_version (stale id mapped
+ * onto the wrong row): the id is a cache key, the explicit model fields are
+ * what the user actually picked, so the picked model must win — otherwise a
+ * shifted id silently resurrects a retired model (e.g. the rate-limited
+ * default) regardless of the UI selection.
  */
 async function resolveLlmOverride(override: LLMOverride | null | undefined): Promise<ResolvedLlmSelection> {
   if (!override || typeof override !== "object") return {};
@@ -328,15 +333,35 @@ async function resolveLlmOverride(override: LLMOverride | null | undefined): Pro
         WHERE mc.id = $1`,
       [modelConfigurationId],
     );
-    if (row) {
+    // The id's row is authoritative only when it AGREES with the explicit
+    // model name (or no explicit name was given). On disagreement the
+    // explicit fields win.
+    const rowAuthoritative =
+      row &&
+      (!modelVersion ||
+        modelVersion === "default" ||
+        row.model_name === modelVersion);
+    if (row && rowAuthoritative) {
       return {
         llmProviderId: normalizeProviderId(row.provider),
         llmModelName: row.model_name,
       };
     }
-    logger.warning("llm_override model_configuration_id not found; falling back to provider/model fields", {
-      model_configuration_id: modelConfigurationId,
-    });
+    if (row && !rowAuthoritative) {
+      logger.warning(
+        "llm_override model_configuration_id names a different model than the request; using the explicit model fields",
+        {
+          model_configuration_id: modelConfigurationId,
+          row_model: row.model_name,
+          row_provider: row.provider,
+          requested_model: modelVersion,
+        },
+      );
+    } else {
+      logger.warning("llm_override model_configuration_id not found; falling back to provider/model fields", {
+        model_configuration_id: modelConfigurationId,
+      });
+    }
   }
   // model_provider may be either the provider column id ("kilo",
   // "openai-compatible") or the admin-facing display NAME — the original

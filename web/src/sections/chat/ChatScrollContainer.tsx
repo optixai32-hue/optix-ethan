@@ -251,7 +251,24 @@ const ChatScrollContainer = React.memo(
               scrollToBottom("instant");
             }
 
-            updateScrollState();
+            // Refresh fades + button visibility, but do NOT let transient
+            // geometry flip the at-bottom latch: handleScroll reserves that
+            // flip for explicit user scroll-ups, and one racing frame here
+            // (content burst landing between scrollTo and layout, or the
+            // suppressed smooth-scroll mid-flight sitting above the bottom)
+            // would otherwise permanently disable auto-scroll — the growing
+            // answer would then stream below the fold while the viewport
+            // stays frozen.
+            const state = getScrollState();
+            setHasContentAbove(state.hasContentAbove);
+            setHasContentBelow(state.hasContentBelow);
+            if (!wasAtBottom) {
+              setIsAtBottom(state.isAtBottom);
+              isAtBottomRef.current = state.isAtBottom;
+            } else {
+              isAtBottomRef.current = true;
+            }
+            onScrollButtonVisibilityChangeRef.current?.(!state.isAtBottom);
           });
         };
 

@@ -426,10 +426,17 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
   // typewriter is running its post-finish adaptive drain — the user is
   // reading at that point and a scroll yank as the typewriter speeds up
   // is jarring.
+  // The drain pause must NOT apply while the stream itself is still running:
+  // a display-group renderer can mount mid-stream already in drain mode (its
+  // group gets a synthetic SECTION_END as soon as the next turn's packets
+  // arrive), which would otherwise latch isStreamDraining=true for the rest
+  // of the stream and permanently kill auto-scroll — the answer would grow
+  // below the fold while the viewport sat frozen ("response doesn't stream").
   const autoScrollPreference = user?.preferences?.auto_scroll !== false;
   const isStreamDraining = useCurrentIsStreamDraining();
-  const autoScrollEnabled = autoScrollPreference && !isStreamDraining;
   const isStreaming = currentChatState === "streaming";
+  const autoScrollEnabled =
+    autoScrollPreference && (!isStreamDraining || isStreaming);
 
   const multiModel = useMultiModelChat(llmManager);
 
