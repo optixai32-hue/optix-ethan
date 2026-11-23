@@ -567,6 +567,64 @@ adminSurfaceRoutes.get(
   },
 );
 
+// GET /manage/admin/index-monitoring/runs/resolvable-count — { count }
+// (web/src/lib/connectors/ccPair/hooks.tsx useResolvableRunsCount →
+// useSWR<{ count: number }>; the index-monitoring page polls it while its
+// batch-resolve affordance is enabled). No open runs exist in this port, so
+// the count is always 0.
+adminSurfaceRoutes.get(
+  "/manage/admin/index-monitoring/runs/resolvable-count",
+  requireAdmin,
+  (c) => {
+    // Filter params (level, q, since, until) accepted and ignored — the feed
+    // they would narrow is the same empty list.
+    return c.json({ count: 0 });
+  },
+);
+
+// POST /manage/admin/index-monitoring/runs/resolve — CCPairRunsResolveMatchingResponse
+// (web/src/lib/ccPair.ts resolveMatchingRuns with ccPairId null →
+// { resolved_count, cc_pair_ids }). No runs to resolve: zeroed response.
+adminSurfaceRoutes.post(
+  "/manage/admin/index-monitoring/runs/resolve",
+  requireAdmin,
+  (c) => {
+    return c.json({ resolved_count: 0, cc_pair_ids: [] });
+  },
+);
+
+// GET /manage/admin/cc-pair/:id/runs/resolvable-count — { count }
+// (web/src/lib/connectors/ccPair/hooks.tsx useResolvableRunsCount, pair scope).
+adminSurfaceRoutes.get(
+  "/manage/admin/cc-pair/:ccPairId/runs/resolvable-count",
+  requireAdmin,
+  (c) => {
+    return c.json({ count: 0 });
+  },
+);
+
+// POST /manage/admin/cc-pair/:id/runs/resolve — marks runs resolved
+// (web/src/lib/ccPair.ts resolveCCPairRuns, body { runs }). No runs exist:
+// accepted and ignored.
+adminSurfaceRoutes.post(
+  "/manage/admin/cc-pair/:ccPairId/runs/resolve",
+  requireAdmin,
+  (c) => {
+    return c.json({ resolved_count: 0, cc_pair_ids: [] });
+  },
+);
+
+// POST /manage/admin/cc-pair/:id/runs/resolve-matching — CCPairRunsResolveMatchingResponse
+// (web/src/lib/ccPair.ts resolveMatchingRuns, pair scope, body
+// CCPairRunsMatchingFilter).
+adminSurfaceRoutes.post(
+  "/manage/admin/cc-pair/:ccPairId/runs/resolve-matching",
+  requireAdmin,
+  (c) => {
+    return c.json({ resolved_count: 0, cc_pair_ids: [] });
+  },
+);
+
 // GET /search-settings/get-secondary-search-settings — SavedSearchSettings | null
 // (web/src/lib/searchSettings/hooks.ts useSecondarySearchSettings). No
 // staged re-index: "none configured" is JSON null.

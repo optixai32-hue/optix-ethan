@@ -35,6 +35,15 @@ export const adminRoutes = new Hono();
  */
 adminRoutes.route("/", connectorsRoutes);
 
+/**
+ * Alias under /manage/admin/* — the original frontend (web/src/lib/ccPair.ts,
+ * web/src/lib/connector.ts, web/src/lib/swr-keys.ts) addresses the same
+ * connector/credential/cc-pair surface at /api/manage/admin/... (the Python
+ * /manage/admin router prefix). Merging twice is safe: Hono registers each
+ * connector path under both prefixes and the route sets are disjoint.
+ */
+adminRoutes.route("/admin", connectorsRoutes);
+
 async function requireAdmin(c: Context) {
   const user = await requireUser(c);
   if (user.role !== "admin") {
