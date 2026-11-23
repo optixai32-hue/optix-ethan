@@ -67,6 +67,28 @@ import { registerBuiltInTools } from "../tools/built_in_tools";
 const logger = getLogger("chat.process_message");
 
 /**
+ * Tool-routing guidance appended to the persona system prompt whenever tools
+ * are offered to the model (agent.py passes tools via the provider's tool
+ * specs; the original deployment additionally relies on the WebSearchTool's
+ * description to steer public-vs-internal routing). Free-tier models routinely
+ * ignored the web_search tool and answered purely from internal search, so the
+ * port states the routing contract explicitly: internal content -> internal
+ * search, public/current knowledge -> web search, and internal search MUST
+ * escalate to web search when it yields nothing relevant.
+ */
+const TOOL_ROUTING_GUIDANCE = `
+
+# Tool Usage
+You have access to tools that retrieve real information — use them instead of guessing.
+- internal_search: searches ONLY the user's private/internal documents. Use it when the question may be answered by the user's own files, tickets, chats, or indexed internal content.
+- web_search: searches the public web. Use it for current events, news, public facts, prices, product versions, or ANY question the user's internal documents cannot answer.
+Routing rules:
+1. If the question concerns the user's internal/private content, call internal_search.
+2. If the question concerns public knowledge, current events, or anything time-sensitive, call web_search.
+3. If internal_search returns no relevant results, call web_search before answering.
+4. When in doubt, use both tools.`;
+
+/**
  * Port contract: 8 agent iterations (Python: MAX_LLM_CYCLES = 30 in
  * onyx/configs/chat_configs.py; the port caps lower per the task spec).
  */
@@ -547,17 +569,22 @@ export async function processMessage(
               throw new ChatRuntimeError("Chat turn exceeded its time limit");
             }
 
+            // Last iteration: no tools offered (port of tool_choice=NONE on
+            // the final step, agent.py _prepare_step).
+            const offerTools = step < MAX_AGENT_STEPS - 1;
+            // Tools are offered on every step except the last; the routing
+            // guidance only ships when the model can actually call tools.
+            const personaPrompt = offerTools
+              ? persona.system_prompt + TOOL_ROUTING_GUIDANCE
+              : persona.system_prompt;
             const systemPrompt = buildCitedSystemPrompt(
-              persona.system_prompt,
+              personaPrompt,
               gatheredDocs,
             );
             const llmMessages: LLMMessage[] = [
               ...buildHistory(rows, systemPrompt),
               ...inMemory,
             ];
-            // Last iteration: no tools offered (port of tool_choice=NONE on
-            // the final step, agent.py _prepare_step).
-            const offerTools = step < MAX_AGENT_STEPS - 1;
 
             // Placement turn for this LLM cycle (llm_loop.py:1125 —
             // turn_index = llm_cycle_count; there is no forced retrieval step

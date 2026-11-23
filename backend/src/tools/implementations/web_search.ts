@@ -36,7 +36,7 @@ export const WEB_SEARCH_TOOL_ID = "web_search";
 export const WEB_SEARCH_TOOL_NAME = "web_search";
 
 const WEB_SEARCH_DESCRIPTION =
-  "Search the web for information. Use for current events, public knowledge, or anything not covered by internal documents.";
+  "Search the public web for information. Use this for current events, news, public facts, prices, versions, documentation of public products, or ANY question that the user's internal documents cannot answer. If internal search returned no relevant results, call this tool before answering.";
 
 /** The single fixed web-search surface (no configuration — see docblock). */
 const YONDERLY_SEARCH_URL =
@@ -213,6 +213,11 @@ export const webSearchTool: Tool = {
       blurb: r.snippet,
       content: r.snippet,
       source_type: "web",
+      // The result URL doubles as the document link: the frontend renders the
+      // site's real favicon from this link (WebResultIcon/SourceTag) and the
+      // cited context becomes a clickable [n](url) reference — mirroring how
+      // the Python web connector populates OnyxDocument.link.
+      link: r.url,
       metadata: { host_name: r.host_name, date: r.date },
       primary_owners: [],
       secondary_owners: [],

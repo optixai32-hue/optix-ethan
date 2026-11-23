@@ -33,7 +33,7 @@ export const SEARCH_TOOL_ID = "search_internal";
 export const INTERNAL_SEARCH_TOOL_NAME = "internal_search";
 
 const SEARCH_TOOL_DESCRIPTION =
-  "Search connected applications for information. Use for any question that may be answered by the user's documents, tickets, chats, or indexed files.";
+  "Search ONLY the user's internal documents and connected applications (files, tickets, chats, indexed private content). Do NOT use this for public knowledge, current events, or general questions — use the web_search tool for those. If this tool returns no relevant results for the user's question, call web_search instead of answering from memory.";
 
 /** Format SearchDocs with [n] markers + blurbs for the LLM (see header). */
 export function formatSearchDocsForLlm(docs: SearchDoc[]): string {
