@@ -127,14 +127,28 @@ export async function getLLMProvider(
   }
   if (providerId === undefined || providerId === "") {
     // Unset provider id: follow the DB-backed default (admin-managed),
-    // falling back to env routing when the lookup yields nothing.
+    // falling back to env routing when the lookup yields nothing. The
+    // default row's provider must be ROUTED — a seeded default of e.g. the
+    // Kilo gateway previously fell through to the z.ai singleton, whose
+    // config surface does not exist on serverless runtimes (broken default
+    // model for every turn that did not carry an explicit llm_override).
     const def = await resolveDefaultProvider();
     const model =
       modelName && modelName !== "default" ? modelName : def.modelName;
     if (def.providerId === "openai-compatible") {
       return new OpenaiCompatProvider(model);
     }
-    return getZaiSingleton(model);
+    if (def.providerId === KILO_PROVIDER_ID) {
+      return new KiloProvider(model);
+    }
+    if (def.providerId === "zai") {
+      return getZaiSingleton(model);
+    }
+    logger.warning(
+      "unhandled default provider id; falling back to openai-compatible",
+      { providerId: def.providerId },
+    );
+    return new OpenaiCompatProvider(model);
   }
   logger.warning("unknown provider id; falling back to default", { providerId });
   const def = await resolveDefaultProvider();
@@ -142,7 +156,13 @@ export async function getLLMProvider(
   if (def.providerId === "openai-compatible") {
     return new OpenaiCompatProvider(model);
   }
-  return getZaiSingleton(model);
+  if (def.providerId === KILO_PROVIDER_ID) {
+    return new KiloProvider(model);
+  }
+  if (def.providerId === "zai") {
+    return getZaiSingleton(model);
+  }
+  return new OpenaiCompatProvider(model);
 }
 
 /**
