@@ -46,18 +46,19 @@ export class StreamEmitter {
   /**
    * Emit a simple (message-carrying) packet. Port of the classic emitter's
    * simple-string path: `packet` stays empty, `message` carries the payload.
-   * `tab` carries the parallel-tab placement (upstream tab_index).
+   * `tab` carries the parallel-tab placement (upstream tab_index); `subTurn`
+   * the nested sub-turn placement (upstream sub_turn_index).
    */
-  send(type: PacketType, ind: number, message: string, tab = 0): Packet {
-    return this.publish(type, ind, message, "", tab);
+  send(type: PacketType, ind: number, message: string, tab = 0, subTurn?: number): Packet {
+    return this.publish(type, ind, message, "", tab, subTurn);
   }
 
   /**
    * Emit with a free-form type string — used to forward tool progress packet
    * types that arrive through the ToolContext.emit contract.
    */
-  sendRaw(type: string, ind: number, message: string, tab = 0): Packet {
-    return this.publish(type as PacketType, ind, message, "", tab);
+  sendRaw(type: string, ind: number, message: string, tab = 0, subTurn?: number): Packet {
+    return this.publish(type as PacketType, ind, message, "", tab, subTurn);
   }
 
   /**
@@ -70,8 +71,9 @@ export class StreamEmitter {
     obj: unknown,
     message = "",
     tab = 0,
+    subTurn?: number,
   ): Packet {
-    return this.publish(type, ind, message, JSON.stringify(obj), tab);
+    return this.publish(type, ind, message, JSON.stringify(obj), tab, subTurn);
   }
 
   /** Port of StreamingError semantics from streaming_models.py. */
@@ -99,6 +101,7 @@ export class StreamEmitter {
     message: string,
     packetJson: string,
     tab = 0,
+    subTurn?: number,
   ): Packet {
     this.seq += 1;
     const packet: Packet = {
@@ -108,6 +111,7 @@ export class StreamEmitter {
       type,
       message,
       ...(tab !== 0 ? { tab } : {}),
+      ...(subTurn !== undefined ? { subTurn } : {}),
     };
     this.packets.push(packet);
     if (this.subscriber) {

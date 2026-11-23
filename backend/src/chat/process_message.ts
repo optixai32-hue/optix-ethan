@@ -63,6 +63,7 @@ import {
 import type { CitationInfoEvent } from "../rag/citations";
 import { getTool, listTools } from "../tools/registry";
 import { registerBuiltInTools } from "../tools/built_in_tools";
+import type { Tool } from "../tools/interface";
 
 const logger = getLogger("chat.process_message");
 
@@ -138,7 +139,10 @@ export function packetToFrameJson(packet: Packet): string | null {
   const placement = {
     turn_index: packet.ind ?? 0,
     tab_index: packet.tab ?? 0,
-    sub_turn_index: null,
+    // Nested sub-turn placement (upstream sub_turn_index): deep research
+    // research-agent steps nest their search tool packets by sub_turn_index —
+    // the frontend's ResearchAgentRenderer renders each as a nested tool row.
+    sub_turn_index: packet.subTurn ?? null,
     model_index: 0,
   };
   let obj: Record<string, unknown> | null = null;
@@ -480,7 +484,18 @@ export async function processMessage(
           // keeps the upstream parallel-tab placement (llm_loop.py: tool
           // packets carry the turn of the LLM step that called them, each on
           // its own tab — tab 0 stays reserved for the reasoning group).
-          const makeToolContext = (turn: number, tab = 0) => ({
+          // `subTurn` additionally nests the packets INSIDE a (turn, tab)
+          // group (upstream sub_turn_index) — used by the deep research
+          // research-agent steps, where the searches render as nested tool
+          // rows of the agent step instead of separate timeline steps.
+          // `onDocs` observes every SearchDoc payload a tool delivers (used by
+          // the deep research searches to collect their per-round results).
+          const makeToolContext = (
+            turn: number,
+            tab = 0,
+            subTurn?: number,
+            onDocs?: (docs: SearchDoc[]) => void,
+          ) => ({
             userId: opts.user.user.id,
             chatSessionId: session.id,
             emit: (packetType: string, message: string): void => {
@@ -494,50 +509,68 @@ export async function processMessage(
                       (parsed as { documents?: unknown }).documents,
                     )
                   ) {
+                    const docs = (parsed as { documents: SearchDoc[] }).documents;
                     mergeGatheredDocs(
                       gatheredDocs,
                       citationMapping,
-                      (parsed as { documents: SearchDoc[] }).documents,
+                      docs,
                     );
+                    if (onDocs) onDocs(docs);
                   }
                 } catch {
                   // ignore malformed doc payloads
                 }
               }
               // Forward tool progress to the user stream as a packet.
-              emitter.sendRaw(packetType, turn, message, tab);
+              emitter.sendRaw(packetType, turn, message, tab, subTurn);
             },
           });
 
-          // ---- Deep Research (chat toggle): plan -> search per sub-question
-          // -> intermediate reports; the reports then seed the agent loop's
-          // context so the final answer stays inside the normal cited path.
+          // ---- Deep Research (chat toggle): plan -> one research-agent
+          // step per sub-question (searches nested inside + intermediate
+          // report) -> the reports seed the agent loop's context so the final
+          // answer stays inside the normal cited path.
+          //
+          // Timeline-turn budget: turn 0 = plan step, turns 1..N = research
+          // agent steps. The agent loop continues on the NEXT fresh turn, so
+          // the full timeline reads:
+          //   Plan -> Research Agent 1 -> ... -> Research Agent N
+          //        -> Thinking -> [Web Search] -> answer -> Done
+          let nextTurn = 0;
           if (opts.deepResearch) {
-            const searchForResearch = async (query: string): Promise<SearchDoc[]> => {
-              const searchToolInstance = toolById.get("search_internal") ?? getTool("search_internal");
-              const webSearchInstance = toolById.get("web_search") ?? getTool("web_search");
+            const searchForResearch = async (
+              query: string,
+              agentTurn: number,
+            ): Promise<SearchDoc[]> => {
+              const internalSearch =
+                toolById.get("search_internal") ?? getTool("search_internal");
+              const webSearch =
+                toolById.get("web_search") ?? getTool("web_search");
+              // The two searches are NESTED tool rows inside the research
+              // agent step (sub_turn_index 1 = internal, 2 = web), matching
+              // the original Deep Research agent layout — NOT separate
+              // timeline steps and NOT status lines inside the report.
+              const runs: Array<{ tool: Tool | undefined; subTurn: number }> = [
+                { tool: internalSearch, subTurn: 1 },
+                { tool: webSearch, subTurn: 2 },
+              ];
               const docs: SearchDoc[] = [];
-              for (const instance of [searchToolInstance, webSearchInstance]) {
-                if (!instance || runAbort.signal.aborted) continue;
+              for (const { tool, subTurn } of runs) {
+                if (!tool || runAbort.signal.aborted) continue;
                 try {
-                  const result = await instance.run(
-                    { query, num_hits: 10 },
-                    makeToolContext(0),
+                  await tool.run(
+                    { query, num_hits: 10, num: 10 },
+                    makeToolContext(agentTurn, 0, subTurn, (d) =>
+                      docs.push(...d),
+                    ),
                   );
-                  // Tool.run returns formatted text; the documents themselves
-                  // were already merged into gatheredDocs/citationMapping via
-                  // the emit contract — read them from there.
-                  void result;
                 } catch (err) {
                   logger.warning("deep research tool failed", {
-                    tool: instance.id,
+                    tool: tool.id,
                     error: String(err),
                   });
                 }
               }
-              // The tool context merged each tool's docs into gatheredDocs;
-              // return the full gathered set (deduped by mergeGatheredDocs).
-              docs.push(...gatheredDocs);
               return docs;
             };
 
@@ -550,10 +583,15 @@ export async function processMessage(
                 search: searchForResearch,
                 mergeDocs: (incoming) =>
                   mergeGatheredDocs(gatheredDocs, citationMapping, incoming),
+                startTurn: 0,
                 signal: runAbort.signal,
               });
               // The reports become in-memory context ahead of the agent loop.
               inMemory.push(...research.contextMessages);
+              // The agent loop continues on a FRESH turn after the research
+              // phases; the frontend closes the research steps (SECTION_END
+              // injection) as soon as the first packet of this new turn lands.
+              nextTurn = research.nextTurn;
             } catch (err) {
               logger.warning("deep research loop failed", { error: String(err) });
             }
@@ -572,10 +610,9 @@ export async function processMessage(
           // AbortSignal, wall-clock deadline)
           // Monotonic timeline-turn allocator: each LLM cycle takes the next
           // fresh turn; tools that own their own timeline row (the web search
-          // step) consume a dedicated sequential turn. Keeps the timeline
-          // order Thinking -> Web Search -> Thinking -> ... -> Done collision
-          // free.
-          let nextTurn = 0;
+          // step) consume a dedicated sequential turn. Deep research consumes
+          // the turns before the loop (plan + one per research agent). Keeps
+          // the timeline order collision free.
           for (let step = 0; step < MAX_AGENT_STEPS; step += 1) {
             if (runAbort.signal.aborted) {
               throw new ChatRuntimeError("Chat turn was aborted");

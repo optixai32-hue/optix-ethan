@@ -68,6 +68,12 @@ export interface Packet {
   /** Parallel-tab index within the turn (upstream placement.tab_index
    * semantics: parallel tool calls share the turn with distinct tabs). */
   tab?: number;
+  /** Nested sub-turn index within the (turn, tab) group (upstream
+   * placement.sub_turn_index semantics). Deep Research research-agent steps
+   * use it to nest their tool packets (searches) inside the agent step: the
+   * frontend's ResearchAgentRenderer splits a group's packets by
+   * sub_turn_index and renders each as a nested tool row. */
+  subTurn?: number;
 }
 
 /** Citation metadata that travels with citation_info packets. */
