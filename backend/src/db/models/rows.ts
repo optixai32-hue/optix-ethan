@@ -274,6 +274,9 @@ export function rowToChatMessage(row: Row): ChatMessage {
     citations: narrowCitations(row["citations"]),
     error: optStr(row, "error"),
     created_at: reqDate(row, "created_at"),
+    packets: Array.isArray(row["packets"])
+      ? (row["packets"] as unknown[])
+      : null,
   };
 }
 

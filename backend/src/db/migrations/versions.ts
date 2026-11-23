@@ -621,4 +621,16 @@ CREATE TABLE IF NOT EXISTS build_message (
 ALTER TABLE build_message ADD COLUMN IF NOT EXISTS message_metadata JSONB NULL;
 `,
   },
+  // Migration 0014 — historical packet replay: persist the raw packet list of
+  // each assistant turn so a reloaded session renders the exact timeline the
+  // live stream produced (Thinking -> Web Search -> Thinking -> answer -> Done),
+  // mirroring the upstream packet replay (session_loading.py
+  // translate_assistant_message_to_packets works from stored packets).
+  {
+    id: "0014",
+    name: "chat_message packet history for faithful timeline replay",
+    sql: `
+ALTER TABLE chat_message ADD COLUMN IF NOT EXISTS packets JSONB NULL;
+`,
+  },
 ];

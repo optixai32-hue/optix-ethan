@@ -156,43 +156,24 @@ export const webSearchTool: Tool = {
         ? Math.min(Math.max(Math.trunc(input.num), 1), 20)
         : 5;
 
-    // Timeline placement — two modes (see ToolContext.mergeIntoThinking):
-    //
-    // 1. Agent loop (mergeIntoThinking=true): the search runs INSIDE the
-    //    cycle's existing "Thinking" step. We emit reasoning_delta status
-    //    lines (the SAME packet path the model's own thinking uses), so no
-    //    SearchToolStart packet is sent and the frontend never creates a
-    //    separate "Web Search" step — the search text just appears inside
-    //    the Thinking step's content. The documents delta below still feeds
-    //    the citation mapping (handleDocumentPacket processes every packet).
-    //
-    // 2. Deep research (mergeIntoThinking unset): the original 3-packet
-    //    sequence (SearchToolStart(is_internet_search=true) ->
-    //    SearchToolQueriesDelta -> SearchToolDocumentsDelta) is kept; there
-    //    the packets join the deep-research plan group, which renders via
-    //    DeepResearchPlanRenderer and ignores them.
-    if (ctx.mergeIntoThinking) {
-      try {
-        ctx.emit?.(
-          "reasoning_delta",
-          `\n\nSearching the web for "${query}"...\n`,
-        );
-      } catch (err) {
-        logger.debug("web search emit failed", { error: String(err) });
-      }
-    } else {
-      try {
-        ctx.emit?.(
-          "search_tool_start",
-          JSON.stringify({ is_internet_search: true }),
-        );
-        ctx.emit?.(
-          "search_tool_queries_delta",
-          JSON.stringify({ queries: [query] }),
-        );
-      } catch (err) {
-        logger.debug("web search emit failed", { error: String(err) });
-      }
+    // Timeline placement — the search is its OWN timeline step, exactly like
+    // the official web-search step: SearchToolStart(is_internet_search=true)
+    // -> SearchToolQueriesDelta -> (after fetching) SearchToolDocumentsDelta.
+    // The frontend's WebSearchToolRenderer renders this packet group as a
+    // separate "Searching the web" step (globe icon + query chips) in the
+    // timeline, BETWEEN the Thinking steps — no reasoning_delta status lines
+    // are injected into the model's Thinking text.
+    try {
+      ctx.emit?.(
+        "search_tool_start",
+        JSON.stringify({ is_internet_search: true }),
+      );
+      ctx.emit?.(
+        "search_tool_queries_delta",
+        JSON.stringify({ queries: [query] }),
+      );
+    } catch (err) {
+      logger.debug("web search emit failed", { error: String(err) });
     }
 
     let results: WebSearchResultItem[];
@@ -216,36 +197,11 @@ export const webSearchTool: Tool = {
       // Graceful degradation: report unavailability instead of throwing, so
       // the agent loop continues (the registry keeps the tool listed).
       logger.warning("web search unavailable", { error: String(err), query });
-      if (ctx.mergeIntoThinking) {
-        try {
-          ctx.emit?.(
-            "reasoning_delta",
-            "Web search is unavailable right now.\n",
-          );
-        } catch {
-          // status line is best-effort
-        }
-      }
       return {
         content:
           "Web search is currently unavailable (the web search endpoint could not be reached or blocked this request). " +
           "Answer from internal sources or your own knowledge instead.",
       };
-    }
-
-    // Status line INSIDE the same Thinking step: the search result count
-    // stays visible where the "Searching..." line was written.
-    if (ctx.mergeIntoThinking) {
-      try {
-        ctx.emit?.(
-          "reasoning_delta",
-          results.length > 0
-            ? `Found ${results.length} web results.\n`
-            : "No web results found.\n",
-        );
-      } catch (err) {
-        logger.debug("web search emit failed", { error: String(err) });
-      }
     }
 
     // Deliver synthetic web SearchDocs for the chat engine's citation mapping

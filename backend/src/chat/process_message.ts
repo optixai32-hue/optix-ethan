@@ -129,8 +129,12 @@ function sseFrame(packet: Packet): string {
  * (chat/models.py:606) — either a bare MessageResponseIDInfo/CreateChatSessionID/
  * StreamingError or a wrapped Packet {placement, obj} with obj discriminated on
  * "type" (server/query_and_chat/streaming_models.py).
+ *
+ * Exported for the history replay: assistant messages persist their raw packet
+ * list and GET /chat/chat-session/:id re-runs this builder so a reloaded
+ * session renders the exact timeline the live stream produced.
  */
-function ndjsonFrame(packet: Packet): string {
+export function packetToFrameJson(packet: Packet): string | null {
   const placement = {
     turn_index: packet.ind ?? 0,
     tab_index: packet.tab ?? 0,
@@ -148,7 +152,7 @@ function ndjsonFrame(packet: Packet): string {
       // Not part of the v5.1.3 protocol (no USER_MESSAGE PacketObj exists);
       // kept only as a defensive no-op so a legacy emitter call can never
       // poison the frontend's group classification again.
-      return "";
+      return null;
     case "agent_response_start":
       // AgentResponseStart (streaming_models.py): final_documents +
       // pre_answer_processing_seconds only.
@@ -160,7 +164,7 @@ function ndjsonFrame(packet: Packet): string {
             final_documents: obj?.final_documents ?? null,
             pre_answer_processing_seconds: obj?.pre_answer_processing_seconds ?? null,
           },
-        }) + "\n"
+        })
       );
     case "agent_response_delta":
       // The simple-send path carries the delta text in `message`; the
@@ -174,7 +178,7 @@ function ndjsonFrame(packet: Packet): string {
               packet.message ||
               ((obj?.content as string | undefined) ?? ""),
           },
-        }) + "\n"
+        })
       );
     case "citation_info":
       return (
@@ -185,33 +189,33 @@ function ndjsonFrame(packet: Packet): string {
             citation_number: obj?.citation_number ?? 0,
             document_id: obj?.document_id ?? "",
           },
-        }) + "\n"
+        })
       );
     case "stop":
       return (
         JSON.stringify({
           placement,
           obj: { type: "stop", stop_reason: obj?.stop_reason ?? null },
-        }) + "\n"
+        })
       );
     case "chat_heartbeat":
-      return JSON.stringify({ placement, obj: { type: "chat_heartbeat" } }) + "\n";
+      return JSON.stringify({ placement, obj: { type: "chat_heartbeat" } });
     case "reasoning_start":
       // ReasoningStart (streaming_models.py): thinking-phase opener — renders
       // as the collapsible "Thinking" timeline step (ReasoningRenderer).
       return (
-        JSON.stringify({ placement, obj: { type: "reasoning_start" } }) + "\n"
+        JSON.stringify({ placement, obj: { type: "reasoning_start" } })
       );
     case "reasoning_delta":
       return (
         JSON.stringify({
           placement,
           obj: { type: "reasoning_delta", reasoning: packet.message ?? "" },
-        }) + "\n"
+        })
       );
     case "reasoning_done":
       return (
-        JSON.stringify({ placement, obj: { type: "reasoning_done" } }) + "\n"
+        JSON.stringify({ placement, obj: { type: "reasoning_done" } })
       );
     // ---- Deep Research packets (web/src/app/app/services/streamingModels.ts
     // DeepResearchPlan*/ResearchAgentStart/IntermediateReport* shapes)
@@ -220,7 +224,7 @@ function ndjsonFrame(packet: Packet): string {
         JSON.stringify({
           placement,
           obj: { type: "deep_research_plan_start" },
-        }) + "\n"
+        })
       );
     case "deep_research_plan_delta":
       return (
@@ -230,7 +234,7 @@ function ndjsonFrame(packet: Packet): string {
             type: "deep_research_plan_delta",
             content: packet.message || ((obj?.content as string | undefined) ?? ""),
           },
-        }) + "\n"
+        })
       );
     case "research_agent_start":
       return (
@@ -240,14 +244,14 @@ function ndjsonFrame(packet: Packet): string {
             type: "research_agent_start",
             research_task: (obj?.research_task as string | undefined) ?? packet.message ?? "",
           },
-        }) + "\n"
+        })
       );
     case "intermediate_report_start":
       return (
         JSON.stringify({
           placement,
           obj: { type: "intermediate_report_start" },
-        }) + "\n"
+        })
       );
     case "intermediate_report_delta":
       return (
@@ -257,7 +261,7 @@ function ndjsonFrame(packet: Packet): string {
             type: "intermediate_report_delta",
             content: packet.message || ((obj?.content as string | undefined) ?? ""),
           },
-        }) + "\n"
+        })
       );
     case "intermediate_report_cited_docs":
       return (
@@ -267,7 +271,7 @@ function ndjsonFrame(packet: Packet): string {
             type: "intermediate_report_cited_docs",
             cited_docs: (obj?.cited_docs as unknown) ?? null,
           },
-        }) + "\n"
+        })
       );
     case "error":
       // StreamingError is a bare (unwrapped) AnswerStreamPart
@@ -278,7 +282,7 @@ function ndjsonFrame(packet: Packet): string {
           error_code: (obj?.error_code as string | null | undefined) ?? null,
           is_retryable: (obj?.is_retryable as boolean | undefined) ?? false,
           details: (obj?.details as Record<string, unknown> | null | undefined) ?? null,
-        }) + "\n"
+        })
       );
     default: {
       // Tool progress packets (search_tool_*, custom_tool_*, ...) arrive via
@@ -305,12 +309,15 @@ function ndjsonFrame(packet: Packet): string {
           payload = { message: packet.message };
         }
       }
-      return (
-        JSON.stringify({ placement, obj: { ...payload, type: packet.type } }) +
-        "\n"
-      );
+      return JSON.stringify({ placement, obj: { ...payload, type: packet.type } });
     }
   }
+}
+
+/** NDJSON stream line for one packet (null packet types emit no line). */
+function ndjsonFrame(packet: Packet): string {
+  const json = packetToFrameJson(packet);
+  return json === null ? "" : json + "\n";
 }
 
 /** Merge docs reported by tools into the citation mapping (renumber-safe). */
@@ -466,22 +473,16 @@ export async function processMessage(
           const inMemory: LLMMessage[] = [];
 
           // Tool context factory — used by the in-loop tool executions below.
-          // `turn` is the llm_cycle_count of the original placement semantics
-          // (llm_loop.py: tool packets carry the turn of the LLM step that
-          // called them) and `tab` the parallel tab within that turn (tab 0 is
-          // reserved for the step's reasoning group, so each tool call renders
-          // as its own parallel step). `mergeIntoThinking` routes the tool's
-          // progress packets INTO the cycle's reasoning group (tab 0) — the
-          // web search status then renders inside the existing "Thinking"
-          // step instead of opening a separate timeline step.
-          const makeToolContext = (
-            turn: number,
-            tab = 0,
-            mergeIntoThinking = false,
-          ) => ({
+          // `turn`/`tab` are the packet placement (turn_index/tab_index): the
+          // frontend groups packets by (turn, tab) and renders each group as
+          // one timeline step. Tools that own their own timeline row (the web
+          // search step) run on a dedicated sequential turn; every other tool
+          // keeps the upstream parallel-tab placement (llm_loop.py: tool
+          // packets carry the turn of the LLM step that called them, each on
+          // its own tab — tab 0 stays reserved for the reasoning group).
+          const makeToolContext = (turn: number, tab = 0) => ({
             userId: opts.user.user.id,
             chatSessionId: session.id,
-            mergeIntoThinking,
             emit: (packetType: string, message: string): void => {
               if (packetType === "search_tool_documents_delta") {
                 try {
@@ -569,6 +570,12 @@ export async function processMessage(
 
           // ---- Agent loop (agent.py ChatAgent; escape hatches: max steps,
           // AbortSignal, wall-clock deadline)
+          // Monotonic timeline-turn allocator: each LLM cycle takes the next
+          // fresh turn; tools that own their own timeline row (the web search
+          // step) consume a dedicated sequential turn. Keeps the timeline
+          // order Thinking -> Web Search -> Thinking -> ... -> Done collision
+          // free.
+          let nextTurn = 0;
           for (let step = 0; step < MAX_AGENT_STEPS; step += 1) {
             if (runAbort.signal.aborted) {
               throw new ChatRuntimeError("Chat turn was aborted");
@@ -594,12 +601,13 @@ export async function processMessage(
               ...inMemory,
             ];
 
-            // Placement turn for this LLM cycle (llm_loop.py:1125 —
-            // turn_index = llm_cycle_count; there is no forced retrieval step
-            // in this port, so cycle 0 is the first LLM step and agent-loop
-            // step N runs at turn N; tools called from this step share its
-            // turn, each on its own parallel tab).
-            const cycleTurn = step;
+            // Placement turn for this LLM cycle. A monotonic allocator (not
+            // `step`): tools that own their own timeline row (the web search
+            // step) consume a dedicated sequential turn, so later cycles never
+            // collide with them. The timeline then reads, for example:
+            //   Thinking(turn 0) -> Web Search(turn 1) -> Thinking(turn 2)
+            //   -> answer(turn 3) -> Done
+            const cycleTurn = nextTurn;
 
             stepBuffer = new StreamBuffer();
             let reasoningStarted = false;
@@ -697,49 +705,50 @@ export async function processMessage(
                 content: stepBuffer.fullResponse(),
                 tool_calls: toolCalls,
               });
+              // Close the cycle's reasoning BEFORE the tools run: the
+              // "Thinking" step completes (checkmark), then each tool renders
+              // as its own step in sequence — Thinking -> Web Search ->
+              // Thinking -> ... -> Done (port of _close_reasoning_if_active).
+              closeReasoningIfActive();
               let callIndex = 0;
+              // Tools that own their own timeline row (the web search step)
+              // run on a dedicated SEQUENTIAL turn; every other tool keeps
+              // the upstream parallel-tab placement within the cycle turn.
+              let ownRowToolCount = 0;
+              let parallelToolCount = 0;
+              // Sequential-turn base for own-row tools: after the answer
+              // group when one already opened (content streamed alongside
+              // the tool calls), else right after the cycle turn.
+              const ownRowBase = answerStarted ? answerTurn() + 1 : cycleTurn + 1;
               for (const call of toolCalls) {
                 const toolCallId = call.id || `${call.name}-${callIndex}`;
-                // Web search merges INTO the cycle's reasoning group (tab 0):
-                // the frontend renders one single "Thinking" step whose
-                // content streams both the model's reasoning and the search
-                // status (reasoning_delta lines) — no separate "Web Search"
-                // step. Every other tool keeps the parallel-tab placement
-                // (tab 0 stays reserved for the step's reasoning group).
-                const isWebSearchCall = call.name === "web_search";
-                const toolTab = isWebSearchCall ? 0 : callIndex + 1;
                 callIndex += 1;
-                // NOTE (upstream fidelity): no pre-tool packet is emitted here.
-                // The tool's own opening packet (SearchToolStart etc.) must be
-                // the FIRST packet of its (turn, tab) group — the frontend
-                // classifies each timeline group by its first packet, and a
-                // non-protocol packet (e.g. a debug frame) before it would
-                // leave the group unclassified, hiding the step entirely.
-                // Exception: when a reasoning group is ALREADY open (or the
-                // web search opens it below), the merged search packets join
-                // that existing group by design.
-
-                // The web search must render inside a "Thinking" step: when
-                // this cycle streamed no reasoning (and no answer yet), open
-                // the reasoning group ourselves so the search status has its
-                // existing step to merge into. Setting reasoningStarted also
-                // shifts the answer to the next turn (see answerTurn below),
-                // keeping the timeline order: Thinking/search -> answer.
-                if (isWebSearchCall && !reasoningStarted && !answerStarted) {
-                  emitter.sendObject("reasoning_start", cycleTurn, {});
-                  reasoningStarted = true;
-                }
-
                 const tool = toolById.get(call.name) ?? getTool(call.name);
                 let content: string;
                 if (!tool) {
                   content = `Error: unknown tool "${call.name}". Available tools: ${tools.map((t) => t.name).join(", ")}.`;
                 } else {
-                  const toolContext = makeToolContext(
-                    cycleTurn,
-                    toolTab,
-                    isWebSearchCall,
-                  );
+                  // NOTE (upstream fidelity): no pre-tool packet is emitted
+                  // here. The tool's own opening packet (SearchToolStart
+                  // etc.) must be the FIRST packet of its (turn, tab) group —
+                  // the frontend classifies each timeline group by its first
+                  // packet, and a non-protocol packet (e.g. a debug frame)
+                  // before it would leave the group unclassified, hiding the
+                  // step entirely.
+                  // The web search opens its own packet group
+                  // (SearchToolStart with is_internet_search=true), which the
+                  // frontend renders as a separate "Searching the web" step
+                  // BETWEEN the Thinking steps.
+                  const isWebSearchCall = tool.id === "web_search";
+                  const toolContext = isWebSearchCall
+                    ? (() => {
+                        ownRowToolCount += 1;
+                        return makeToolContext(ownRowBase + ownRowToolCount - 1, 0);
+                      })()
+                    : (() => {
+                        parallelToolCount += 1;
+                        return makeToolContext(cycleTurn, parallelToolCount);
+                      })();
                   try {
                     const result = await tool.run(
                       parseToolArguments(call.arguments),
@@ -761,11 +770,9 @@ export async function processMessage(
                   name: call.name,
                 });
               }
-              // Close the reasoning group AFTER the tools ran: the Thinking
-              // step stays live (spinner) while the web search streams its
-              // status lines into it, and reasoning_done lands once the
-              // search finished (port of _close_reasoning_if_active).
-              closeReasoningIfActive();
+              // Reserve the turns consumed by this cycle: the cycle turn
+              // itself plus one sequential turn per own-row tool (web search).
+              nextTurn = ownRowBase + ownRowToolCount;
               continue; // next agent iteration with tool results appended
             }
 
@@ -806,8 +813,15 @@ export async function processMessage(
               citationsMap[String(c.citation_number)] = c.document_id;
             }
 
-            // Persist the response + citations (chat/persistence.py).
-            const saved = await appendChatMessage(session.id, answerText, "assistant");
+            // Persist the response + citations (chat/persistence.py) + the raw
+            // packet list so a reloaded session replays the exact timeline
+            // (Thinking -> Web Search -> Thinking -> answer -> Done).
+            const saved = await appendChatMessage(
+              session.id,
+              answerText,
+              "assistant",
+              emitter.getPackets(),
+            );
             await updateChatMessage(saved.id, { citations: citationsMap });
 
             // Final line: bare ChatMessageDetail (server/query_and_chat/models.py)
@@ -867,6 +881,7 @@ export async function processMessage(
               opts.chatSessionId,
               stepBuffer?.fullResponse() ?? "",
               "assistant",
+              emitter.getPackets(),
             );
             await updateChatMessage(failed.id, { error: message });
           } catch (persistErr) {

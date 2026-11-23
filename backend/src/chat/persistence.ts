@@ -69,6 +69,7 @@ type ChatMessageRow = {
   citations: Citation[] | null;
   error: string | null;
   created_at: Date | string;
+  packets: unknown | null;
 };
 
 function normalizeSession(row: ChatSessionRow): ChatSession {
@@ -94,6 +95,10 @@ function normalizeMessage(row: ChatMessageRow): ChatMessage {
     citations: row.citations,
     error: row.error,
     created_at: new Date(row.created_at),
+    packets:
+      row.packets && Array.isArray(row.packets)
+        ? (row.packets as ChatMessage["packets"])
+        : null,
   };
 }
 
@@ -217,16 +222,23 @@ export async function appendChatMessage(
   chatSessionId: string,
   message: string,
   role: "user" | "assistant",
+  /** Raw packet list (assistant turns only) for the historical timeline replay. */
+  packets?: unknown[],
 ): Promise<ChatMessage> {
   const row = await queryOne<ChatMessageRow>(
     `WITH idx AS (
        SELECT COALESCE(COUNT(*), 0) AS next_index
        FROM chat_message WHERE chat_session_id = $1
      )
-     INSERT INTO chat_message (chat_session_id, message, role, message_index, created_at)
-     SELECT $1, $2, $3, idx.next_index, now() FROM idx
-     RETURNING id, chat_session_id, message, role, message_index, citations, error, created_at`,
-    [chatSessionId, message, role],
+     INSERT INTO chat_message (chat_session_id, message, role, message_index, created_at, packets)
+     SELECT $1, $2, $3, idx.next_index, now(), $4::jsonb FROM idx
+     RETURNING id, chat_session_id, message, role, message_index, citations, error, created_at, packets`,
+    [
+      chatSessionId,
+      message,
+      role,
+      packets && packets.length > 0 ? JSON.stringify(packets) : null,
+    ],
   );
   if (!row) {
     throw new Error("chat_message insert returned no row");
@@ -258,7 +270,7 @@ export async function updateChatMessage(
 /** Messages of a session in conversation order. */
 export async function getChatMessages(chatSessionId: string): Promise<ChatMessage[]> {
   const res = await query<ChatMessageRow>(
-    `SELECT id, chat_session_id, message, role, message_index, citations, error, created_at
+    `SELECT id, chat_session_id, message, role, message_index, citations, error, created_at, packets
      FROM chat_message
      WHERE chat_session_id = $1
      ORDER BY message_index ASC`,

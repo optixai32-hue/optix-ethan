@@ -37,7 +37,8 @@ import {
   UnauthorizedError,
   UnsupportedFeatureError,
 } from "../../utils/errors";
-import { processMessage } from "../../chat/process_message";
+import { processMessage, packetToFrameJson } from "../../chat/process_message";
+import type { Packet } from "../../chat/models";
 import {
   createChatSession,
   deleteChatSession,
@@ -638,8 +639,9 @@ chatRoutes.get("/get-chat-session/:id", async (c) => {
     citations: unknown;
     error: string | null;
     created_at: Date | string;
+    packets: unknown | null;
   }>(
-    `SELECT id, message, role, citations, error, created_at
+    `SELECT id, message, role, citations, error, created_at, packets
      FROM chat_message WHERE chat_session_id = $1
      ORDER BY message_index ASC, id ASC LIMIT $2`,
     [sessionId, limit],
@@ -669,13 +671,33 @@ chatRoutes.get("/get-chat-session/:id", async (c) => {
   // Historical packet replay — port of translate_assistant_message_to_packets
   // (session_loading.py:531): each assistant message rehydrates into the same
   // Packet wire shape the live stream emitted, so a reloaded session renders
-  // identically to one that just streamed. This port persists no tool calls,
-  // so the reduced form is: message_start + message_delta + section_end per
-  // assistant message (create_message_packets, session_loading.py:78).
-  // Placement carries every field pydantic's model_dump includes.
+  // identically to one that just streamed. Assistant messages persist their
+  // raw packet list (migration 0014); each raw packet re-runs the same frame
+  // builder the live stream used. Rows without stored packets (legacy /
+  // user messages) fall back to the reduced form: message_start +
+  // message_delta + section_end (create_message_packets, session_loading.py:78).
   const packetLists: Array<Array<Record<string, unknown>>> = [];
   for (const row of msgRows.rows) {
     if (row.role !== "assistant") continue;
+    if (Array.isArray(row.packets) && row.packets.length > 0) {
+      const frames: Array<Record<string, unknown>> = [];
+      for (const raw of row.packets as Array<Record<string, unknown>>) {
+        try {
+          const type = (raw as { type?: string }).type;
+          // Heartbeats are transport noise, never timeline content.
+          if (type === "chat_heartbeat") continue;
+          const json = packetToFrameJson(raw as unknown as Packet);
+          if (json === null) continue;
+          frames.push(JSON.parse(json));
+        } catch {
+          // skip malformed stored packets
+        }
+      }
+      if (frames.length > 0) {
+        packetLists.push(frames);
+        continue;
+      }
+    }
     const placement = {
       turn_index: 1,
       tab_index: 0,

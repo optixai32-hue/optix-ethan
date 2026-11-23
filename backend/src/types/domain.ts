@@ -106,6 +106,11 @@ export interface ChatMessage {
   citations: Citation[] | Record<string, string> | null;
   error: string | null;
   created_at: Date;
+  // Raw packet list of the turn (assistant messages only, migration 0014):
+  // persisted so the history replay renders the exact live timeline
+  // (Thinking -> Web Search -> Thinking -> answer -> Done). Null on legacy
+  // rows and user messages.
+  packets: unknown[] | null;
 }
 
 // ---------- Documents / Indexing (port of db/models.py: Document, Chunk) ----------
