@@ -470,10 +470,18 @@ export async function processMessage(
           // (llm_loop.py: tool packets carry the turn of the LLM step that
           // called them) and `tab` the parallel tab within that turn (tab 0 is
           // reserved for the step's reasoning group, so each tool call renders
-          // as its own parallel step).
-          const makeToolContext = (turn: number, tab = 0) => ({
+          // as its own parallel step). `mergeIntoThinking` routes the tool's
+          // progress packets INTO the cycle's reasoning group (tab 0) — the
+          // web search status then renders inside the existing "Thinking"
+          // step instead of opening a separate timeline step.
+          const makeToolContext = (
+            turn: number,
+            tab = 0,
+            mergeIntoThinking = false,
+          ) => ({
             userId: opts.user.user.id,
             chatSessionId: session.id,
+            mergeIntoThinking,
             emit: (packetType: string, message: string): void => {
               if (packetType === "search_tool_documents_delta") {
                 try {
@@ -681,8 +689,6 @@ export async function processMessage(
               }
             }
 
-            closeReasoningIfActive();
-
             const toolCalls = stepBuffer.getToolCalls().filter((c) => c.name);
 
             if (toolCalls.length > 0 && offerTools) {
@@ -694,26 +700,46 @@ export async function processMessage(
               let callIndex = 0;
               for (const call of toolCalls) {
                 const toolCallId = call.id || `${call.name}-${callIndex}`;
-                // Parallel-tab placement: each tool call of this cycle gets
-                // its own tab so parallel tool steps render side by side
+                // Web search merges INTO the cycle's reasoning group (tab 0):
+                // the frontend renders one single "Thinking" step whose
+                // content streams both the model's reasoning and the search
+                // status (reasoning_delta lines) — no separate "Web Search"
+                // step. Every other tool keeps the parallel-tab placement
                 // (tab 0 stays reserved for the step's reasoning group).
-                const toolTab = callIndex + 1;
+                const isWebSearchCall = call.name === "web_search";
+                const toolTab = isWebSearchCall ? 0 : callIndex + 1;
                 callIndex += 1;
                 // NOTE (upstream fidelity): no pre-tool packet is emitted here.
                 // The tool's own opening packet (SearchToolStart etc.) must be
                 // the FIRST packet of its (turn, tab) group — the frontend
                 // classifies each timeline group by its first packet, and a
                 // non-protocol packet (e.g. a debug frame) before it would
-                // leave the group unclassified, hiding the step entirely. This
-                // is what silently swallowed the "Searching the web" timeline
-                // step while the search itself ran fine.
+                // leave the group unclassified, hiding the step entirely.
+                // Exception: when a reasoning group is ALREADY open (or the
+                // web search opens it below), the merged search packets join
+                // that existing group by design.
+
+                // The web search must render inside a "Thinking" step: when
+                // this cycle streamed no reasoning (and no answer yet), open
+                // the reasoning group ourselves so the search status has its
+                // existing step to merge into. Setting reasoningStarted also
+                // shifts the answer to the next turn (see answerTurn below),
+                // keeping the timeline order: Thinking/search -> answer.
+                if (isWebSearchCall && !reasoningStarted && !answerStarted) {
+                  emitter.sendObject("reasoning_start", cycleTurn, {});
+                  reasoningStarted = true;
+                }
 
                 const tool = toolById.get(call.name) ?? getTool(call.name);
                 let content: string;
                 if (!tool) {
                   content = `Error: unknown tool "${call.name}". Available tools: ${tools.map((t) => t.name).join(", ")}.`;
                 } else {
-                  const toolContext = makeToolContext(cycleTurn, toolTab);
+                  const toolContext = makeToolContext(
+                    cycleTurn,
+                    toolTab,
+                    isWebSearchCall,
+                  );
                   try {
                     const result = await tool.run(
                       parseToolArguments(call.arguments),
@@ -735,8 +761,15 @@ export async function processMessage(
                   name: call.name,
                 });
               }
+              // Close the reasoning group AFTER the tools ran: the Thinking
+              // step stays live (spinner) while the web search streams its
+              // status lines into it, and reasoning_done lands once the
+              // search finished (port of _close_reasoning_if_active).
+              closeReasoningIfActive();
               continue; // next agent iteration with tool results appended
             }
+
+            closeReasoningIfActive();
 
             // ---- Final step: no tool calls -> flush the already-streamed answer
             if (!stepBuffer.fullResponse().trim() && !runAbort.signal.aborted) {

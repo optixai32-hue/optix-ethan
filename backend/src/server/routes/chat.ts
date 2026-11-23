@@ -298,8 +298,8 @@ function parseStructuredModelValue(
  * names a DIFFERENT model than the request's model_version (stale id mapped
  * onto the wrong row): the id is a cache key, the explicit model fields are
  * what the user actually picked, so the picked model must win — otherwise a
- * shifted id silently resurrects a retired model (e.g. the rate-limited
- * default) regardless of the UI selection.
+ * reseeded/reseeded-shifted id silently resurrects a retired model (e.g. the
+ * rate-limited default) regardless of the UI selection.
  */
 async function resolveLlmOverride(override: LLMOverride | null | undefined): Promise<ResolvedLlmSelection> {
   if (!override || typeof override !== "object") return {};
