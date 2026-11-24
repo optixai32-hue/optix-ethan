@@ -78,17 +78,26 @@ export const useCanvasStore = create<CanvasStore>()((set) => ({
     set((state) => ({ visible: false, expandedNodeId: null, nodeId: state.nodeId })),
 
   streamUpdate: (data) =>
-    set((state) =>
-      state.visible && (state.nodeId === data.nodeId || data.isStreaming)
-        ? {
-            title: data.title,
-            content: data.content,
-            isStreaming: data.isStreaming,
-            nodeId: data.nodeId,
-            expandedNodeId: data.nodeId,
-          }
-        : {},
-    ),
+    set((state) => {
+      if (!state.visible) return {};
+      if (state.nodeId !== data.nodeId && !data.isStreaming) return {};
+      // While an updated canvas is still being written (its first deltas have
+      // not arrived yet), keep the current document on screen — the floating
+      // "Writing the canvas…" badge signals the update in progress, and the
+      // new version replaces the old one only once it actually streams in
+      // (blanking the panel for the whole LLM call looks like a freeze).
+      const content =
+        !data.content.trim() && state.content.trim()
+          ? state.content
+          : data.content;
+      return {
+        title: data.title,
+        content,
+        isStreaming: data.isStreaming,
+        nodeId: data.nodeId,
+        expandedNodeId: data.nodeId,
+      };
+    }),
 
   setContent: (content) => set({ content }),
 

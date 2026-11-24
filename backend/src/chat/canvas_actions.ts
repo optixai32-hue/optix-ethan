@@ -108,6 +108,88 @@ const LANG_EN_TO_FR: Record<string, string> = {
   Spanish: "espagnol",
 };
 
+/** CJK targets translate to a much denser script (fewer chars than input). */
+function isCjkTarget(language: string): boolean {
+  return /chinese|japanese|korean|mandarin|cantonese/i.test(language);
+}
+
+/**
+ * Split a markdown document into top-level sections: the H1 preamble (title
+ * + prepared-date block) then every "## " heading block. The split keeps the
+ * heading line with its body so each section translates standalone. Returns
+ * the sections and the separator text between them (preserved on rebuild).
+ */
+export function splitMarkdownSections(markdown: string): string[] {
+  const normalized = markdown.replace(/\r\n/g, "\n");
+  const sections = normalized.split(/\n(?=#{2,3} )/g);
+  return sections.filter((s) => s.trim().length > 0);
+}
+
+/**
+ * Translate/refine ONE chunk through the provider, WITHOUT emitting deltas —
+ * the caller streams the accepted text itself so a content-filter truncation
+ * (the upstream `finish_reason: "sensitive"` fired on some CJK outputs,
+ * cutting mid-document) never reaches the canvas: the chunk is retried, and
+ * falls back to its original text, before anything is emitted.
+ */
+async function runChunk(
+  provider: LLMProvider,
+  messages: LLMMessage[],
+  opts: {
+    signal?: AbortSignal;
+    maxTokens: number;
+  },
+): Promise<{ text: string; filtered: boolean }> {
+  let text = "";
+  let filtered = false;
+  try {
+    for await (const event of provider.stream(messages, {
+      signal: opts.signal,
+      maxTokens: opts.maxTokens,
+    })) {
+      if (event.delta) text += event.delta;
+      if (
+        event.finish_reason &&
+        event.finish_reason !== "stop" &&
+        event.finish_reason !== "tool_calls"
+      ) {
+        // "sensitive" / "length" / … — the upstream cut the generation.
+        filtered = true;
+      }
+      if (event.done || event.finish_reason === "stop") break;
+    }
+  } catch (err) {
+    logger.warning("canvas action chunk generation failed", {
+      error: String(err),
+    });
+    return { text: "", filtered: true };
+  }
+  return { text, filtered };
+}
+
+/** True when a translated chunk is suspiciously short for its input. */
+function translationLooksTruncated(
+  input: string,
+  output: string,
+  cjkTarget: boolean,
+): boolean {
+  const ratio = output.trim().length / Math.max(input.trim().length, 1);
+  return ratio < (cjkTarget ? 0.15 : 0.45);
+}
+
+/**
+ * Emit finalized text into the canvas step as small deltas — the document
+ * visibly writes line by line instead of landing as one block (the reference
+ * video's progressive canvas). Line-boundary chunks keep markdown intact.
+ */
+function emitChunked(emitter: StreamEmitter, turn: number, text: string): void {
+  if (!text) return;
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    emitter.send("intermediate_report_delta", turn, i === 0 ? lines[i] : `\n${lines[i]}`);
+  }
+}
+
 /** The reasoning line shown in the Thinking step (action-localized). */
 function reasoningLine(instruction: string, language: string | null): string {
   const isFrench = /traduire|ajouter|formater|raccourcir|développer|ajuster|adapter/i.test(
@@ -125,19 +207,31 @@ function reasoningLine(instruction: string, language: string | null): string {
 }
 
 /** The brief chat answer once the document is updated. */
-function answerText(instruction: string, language: string | null): string {
+function answerText(
+  instruction: string,
+  language: string | null,
+  untranslatedSections = 0,
+): string {
   const isFrench = /traduire|ajouter|formater|raccourcir|développer|ajuster|adapter/i.test(
     instruction,
   );
+  // Some sections kept their original language (upstream content filter cut
+  // their translation twice) — say so, honestly and briefly.
+  const note =
+    untranslatedSections > 0
+      ? isFrench
+        ? " (quelques sections ont été conservées dans leur langue d'origine)"
+        : " (a few sections were kept in their original language)"
+      : "";
   if (language) {
     const frName = LANG_EN_TO_FR[language] ?? language.toLowerCase();
     return isFrench
-      ? `J'ai traduit le document en ${frName}. Le canvas mis à jour s'affiche dans le panneau.`
-      : `I translated the document into ${language}. The updated canvas is shown in the panel.`;
+      ? `J'ai traduit le document en ${frName}. Le canvas mis à jour s'affiche dans le panneau.${note}`
+      : `I translated the document into ${language}. The updated canvas is shown in the panel.${note}`;
   }
   return isFrench
-    ? `J'ai mis à jour le document — ${instruction.replace(/\.$/, "")}. Le canvas mis à jour s'affiche dans le panneau.`
-    : `I updated the document — ${instruction.replace(/\.$/, "")}. The updated canvas is shown in the panel.`;
+    ? `J'ai mis à jour le document — ${instruction.replace(/\.$/, "")}. Le canvas mis à jour s'affiche dans le panneau.${note}`
+    : `I updated the document — ${instruction.replace(/\.$/, "")}. The updated canvas is shown in the panel.${note}`;
 }
 
 export interface CanvasActionResult {
@@ -145,6 +239,81 @@ export interface CanvasActionResult {
   updatedContent: string;
   /** The brief chat answer to stream after the canvas step. */
   answerText: string;
+  /** Sections that kept their original text (upstream content filter). */
+  untranslatedSections: number;
+}
+
+/**
+ * Translate the artifact section by section — the only reliable way past the
+ * upstream content filter, which truncates some whole-document CJK
+ * translations mid-flight (`finish_reason: "sensitive"`): each section is
+ * translated on its own, integrity-checked (a CJK target naturally compresses
+ * to ~30% of the source's characters), retried once, and — when the filter
+ * still cuts it — kept in the document's original language so the canvas
+ * NEVER ends up truncated. Accepted sections stream into the canvas as they
+ * finalize, so the panel still writes progressively.
+ */
+async function translateDocumentSectioned(opts: {
+  provider: LLMProvider;
+  emitter: StreamEmitter;
+  turn: number;
+  artifact: { title: string; content: string };
+  translateLanguage: string;
+  signal?: AbortSignal;
+}): Promise<{ content: string; untranslated: number }> {
+  const { provider, emitter, turn, artifact, translateLanguage, signal } = opts;
+  const cjkTarget = isCjkTarget(translateLanguage);
+  const sections = splitMarkdownSections(artifact.content);
+  const out: string[] = [];
+  let untranslated = 0;
+
+  for (const section of sections) {
+    const messages: LLMMessage[] = [
+      { role: "system", content: TRANSLATE_SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: `Target language: ${translateLanguage}\n\nDocument to translate (translate this section on its own, keeping its headings):\n\n${section}`,
+      },
+    ];
+
+    let best = await runChunk(provider, messages, { signal, maxTokens: 8000 });
+    if (
+      best.filtered ||
+      translationLooksTruncated(section, best.text, cjkTarget)
+    ) {
+      logger.warning("canvas translation section truncated; retrying once", {
+        section: section.slice(0, 60),
+        finish_filtered: best.filtered,
+      });
+      const retry = await runChunk(provider, messages, {
+        signal,
+        maxTokens: 8000,
+      });
+      if (retry.text.length > best.text.length) best = retry;
+    }
+
+    let accepted: string;
+    if (
+      best.filtered ||
+      translationLooksTruncated(section, best.text, cjkTarget)
+    ) {
+      // The filter cut this section twice — keep the original text: a
+      // complete document with one section in its original language beats
+      // a truncated translation.
+      accepted = section;
+      untranslated += 1;
+    } else {
+      accepted = best.text.trimEnd();
+    }
+
+    out.push(accepted);
+    // Stream the accepted section into the canvas (chunked so it visibly
+    // writes; the separator keeps the markdown structure).
+    emitChunked(emitter, turn, accepted);
+    emitChunked(emitter, turn, "\n\n");
+  }
+
+  return { content: out.join("\n\n").trimEnd(), untranslated };
 }
 
 /**
@@ -185,42 +354,59 @@ export async function runCanvasAction(opts: {
   emitter.sendObject("intermediate_report_start", canvasTurn, {});
 
   // ---- 3. The updated document streams live into the step (and the open
-  // split-view panel, which follows the streaming canvas).
-  const messages: LLMMessage[] = translateLanguage
-    ? [
-        { role: "system", content: TRANSLATE_SYSTEM_PROMPT },
-        {
-          role: "user",
-          content: `Target language: ${translateLanguage}\n\nDocument to translate:\n\n${artifact.content}`,
-        },
-      ]
-    : [
-        { role: "system", content: REFINE_SYSTEM_PROMPT },
-        {
-          role: "user",
-          content: `Requested change: ${instruction}\n\nCurrent document:\n\n${artifact.content}`,
-        },
-      ];
-
+  // split-view panel, which follows the streaming canvas). Translations run
+  // section by section — each section streams into the canvas the moment it
+  // is finalized (progressive writing), the upstream content filter cannot
+  // truncate the document (a filtered section is retried, then kept in the
+  // original language), and no partial text is ever emitted before its
+  // section is validated. Other refinements regenerate the whole document
+  // with one integrity retry.
   let updatedContent = "";
-  try {
-    for await (const event of provider.stream(messages, {
+  let untranslatedSections = 0;
+  if (translateLanguage) {
+    const result = await translateDocumentSectioned({
+      provider,
+      emitter,
+      turn: canvasTurn,
+      artifact,
+      translateLanguage,
+      signal: opts.signal,
+    });
+    updatedContent = result.content;
+    untranslatedSections = result.untranslated;
+  } else {
+    const refineMessages: LLMMessage[] = [
+      { role: "system", content: REFINE_SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: `Requested change: ${instruction}\n\nCurrent document:\n\n${artifact.content}`,
+      },
+    ];
+    let best = await runChunk(provider, refineMessages, {
       signal: opts.signal,
       maxTokens: 8000,
-    })) {
-      if (event.delta) {
-        updatedContent += event.delta;
-        emitter.send("intermediate_report_delta", canvasTurn, event.delta);
-      }
-      if (event.done || event.finish_reason === "stop") break;
+    });
+    if (best.filtered || best.text.length < artifact.content.length * 0.35) {
+      const retry = await runChunk(provider, refineMessages, {
+        signal: opts.signal,
+        maxTokens: 8000,
+      });
+      if (retry.text.length > best.text.length) best = retry;
     }
-  } catch (err) {
-    logger.warning("canvas action generation failed", { error: String(err) });
-  }
-  if (!updatedContent.trim()) {
-    // Degraded path: keep the document unchanged (the step still closes).
-    updatedContent = artifact.content;
-    emitter.send("intermediate_report_delta", canvasTurn, "\n\n_(the update could not be completed — the document is unchanged)_");
+    if (best.filtered || best.text.length < artifact.content.length * 0.35) {
+      // Degraded path: keep the document unchanged (the step still closes).
+      updatedContent = artifact.content;
+      untranslatedSections = 1;
+      emitChunked(emitter, canvasTurn, updatedContent);
+      emitChunked(
+        emitter,
+        canvasTurn,
+        "\n\n_(the update could not be completed — the document is unchanged)_",
+      );
+    } else {
+      updatedContent = best.text.trim();
+      emitChunked(emitter, canvasTurn, updatedContent);
+    }
   }
 
   // ---- 4. The canvas step's cited docs (unchanged set — none carried by
@@ -229,7 +415,11 @@ export async function runCanvasAction(opts: {
     cited_docs: [],
   });
 
-  return { updatedContent, answerText: answerText(instruction, translateLanguage) };
+  return {
+    updatedContent,
+    answerText: answerText(instruction, translateLanguage, untranslatedSections),
+    untranslatedSections,
+  };
 }
 
 /** Stream a short answer text as agent_response packets (chunked lightly). */

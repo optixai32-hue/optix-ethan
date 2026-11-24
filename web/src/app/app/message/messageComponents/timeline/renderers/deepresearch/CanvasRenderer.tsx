@@ -13,7 +13,7 @@ import {
   CANVAS_TASK_PREFIX,
   canvasContentFromPackets,
   canvasSearchCount,
-  isCanvasTask,
+  extractCanvasFromMessage,
 } from "@/app/app/services/canvasUtils";
 import {
   MessageRenderer,
@@ -56,8 +56,12 @@ export const CanvasRenderer: MessageRenderer<
   // The owning assistant message: the timeline render path does not thread
   // messageNodeId down, and the store's tree can be rebuilt with freshly
   // parsed packets (object identity is not stable across rebuilds) — so the
-  // message is found by VALUE: the assistant message carrying a canvas
-  // research_agent_start on this step's exact turn_index.
+  // message is found by VALUE: the assistant message carrying THIS canvas's
+  // start packet (same turn_index AND same research_task text). Turn index
+  // alone is not enough: every deep-search message puts its canvas on the
+  // same turn, so the task text is what tells one session's canvases apart
+  // (the task carries the unique "Canvas : {title}"). Reverse iteration: the
+  // LATEST matching message wins, so a regenerated branch owns its canvas.
   const message = useMemo(() => {
     if (!messageTree) return undefined;
     if (messageNodeId !== undefined && messageNodeId !== null) {
@@ -67,14 +71,18 @@ export const CanvasRenderer: MessageRenderer<
     const start = packets.find(
       (p) => p.obj.type === PacketType.RESEARCH_AGENT_START,
     );
-    const canvasTurn = start?.placement.turn_index;
-    if (canvasTurn === undefined) return undefined;
-    for (const candidate of messageTree.values()) {
+    if (!start) return undefined;
+    const canvasTurn = start.placement.turn_index;
+    const canvasTask = (start.obj as ResearchAgentStart).research_task;
+    if (canvasTurn === undefined || canvasTask === undefined) {
+      return undefined;
+    }
+    for (const candidate of [...messageTree.values()].reverse()) {
       if (candidate.type !== "assistant") continue;
       const owns = candidate.packets?.some(
         (p) =>
           p.obj.type === PacketType.RESEARCH_AGENT_START &&
-          isCanvasTask((p.obj as ResearchAgentStart).research_task) &&
+          (p.obj as ResearchAgentStart).research_task === canvasTask &&
           p.placement.turn_index === canvasTurn,
       );
       if (owns) return candidate;
@@ -95,7 +103,21 @@ export const CanvasRenderer: MessageRenderer<
   const isComplete =
     packets.some((p) => p.obj.type === PacketType.SECTION_END) ||
     stopPacketSeen;
-  const isStreaming = !isComplete;
+
+  // The full canvas from the owning message — fresher than the card's grouped
+  // packets (pacing can lag the stream), so Agrandir always opens the panel
+  // with everything the message has already received.
+  const fullCanvas = useMemo(
+    () =>
+      message
+        ? extractCanvasFromMessage(
+            message,
+            !isComplete && !stopPacketSeen,
+          )
+        : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- packets mutate in place; packetCount is the memo key (AgentMessage's memo does the same)
+    [message, packets, isComplete, stopPacketSeen],
+  );
 
   const searchCount = message ? canvasSearchCount(message) : 0;
 
@@ -113,11 +135,19 @@ export const CanvasRenderer: MessageRenderer<
     : t("canvas.creating.status");
 
   const handleExpand = () => {
-    openCanvasPanel({
+    // Prefer the owning message's full canvas (correct nodeId + every delta
+    // received so far); fall back to the card's grouped view.
+    const data = fullCanvas ?? {
       nodeId: ownerNodeId ?? -1,
       title,
       content,
       isStreaming: !isComplete,
+    };
+    openCanvasPanel({
+      nodeId: data.nodeId,
+      title: title || data.title,
+      content: data.content || content,
+      isStreaming: data.isStreaming,
     });
   };
 
@@ -128,12 +158,12 @@ export const CanvasRenderer: MessageRenderer<
   const previewScrollRef = useRef<HTMLDivElement>(null);
   // Follow the live stream inside the card preview (pinned to the bottom).
   useEffect(() => {
-    if (!isStreaming) return;
+    if (isComplete) return;
     if (previewScrollRef.current) {
       previewScrollRef.current.scrollTop =
         previewScrollRef.current.scrollHeight;
     }
-  }, [isStreaming, content]);
+  }, [isComplete, content]);
 
   // ---- The collapsed pill (split view open): glyph + title + "Texte" with
   // the orange border, exactly the reference video's compact state. Clicking
@@ -208,7 +238,7 @@ export const CanvasRenderer: MessageRenderer<
         {content.trim() ? (
           <MinimalMarkdown
             content={content}
-            streaming={isStreaming}
+            streaming={!isComplete}
             components={CANVAS_DOCUMENT_COMPONENTS}
           />
         ) : (
