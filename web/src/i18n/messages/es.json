@@ -13019,6 +13019,19 @@
           "searching": {
             "status": "Buscando en la web"
           }
+        },
+        "canvas": {
+          "creating": {
+            "status": "Creando el canvas…"
+          },
+          "generated": {
+            "status": "Canvas listo"
+          },
+          "card": {
+            "subtitle": "Texto",
+            "fallbackTitle": "Canvas de investigación",
+            "openAction": "Abrir el canvas"
+          }
         }
       },
       "toolbar": {
@@ -13629,6 +13642,26 @@
       },
       "incognito": {
         "title": "Estás en modo incógnito"
+      }
+    },
+    "canvasPanel": {
+      "panel": {
+        "ariaLabel": "Panel del canvas",
+        "fallbackTitle": "Canvas de investigación",
+        "writing": "Escribiendo el canvas…",
+        "ready": "Documento de investigación"
+      },
+      "toolbar": {
+        "edit": "Editar",
+        "copy": "Copiar",
+        "download": "Descargar",
+        "translate": "Traducir",
+        "close": "Cerrar",
+        "save": "Guardar",
+        "cancelEdit": "Cancelar edición"
+      },
+      "translate": {
+        "error": "Error de traducción. Inténtalo de nuevo."
       }
     }
   },

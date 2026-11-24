@@ -34,6 +34,7 @@ import { useRouter } from "next/navigation";
 import { MoveCustomAgentChatModal } from "@/lib/agents/components";
 import { ConfirmationModalLayout } from "@opal/layouts";
 import FrostedDiv from "@/refresh-components/FrostedDiv";
+import ChatCanvasPanel from "@/components/ChatCanvasPanel";
 import {
   Button,
   Dropdown,
@@ -751,6 +752,10 @@ export default function AppChrome({ children }: AppChromeProps) {
             <Footer />
           </div>
           {rightPanel}
+          {/* Deep Search canvas side panel — chat + canvas split view.
+            Renders nothing unless a canvas exists; the original layout is
+            untouched when closed. */}
+          <ChatCanvasPanel />
         </div>
       </RootLayout.App>
     </RootLayoutRightPanelSlotContext.Provider>

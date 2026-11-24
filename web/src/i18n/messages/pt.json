@@ -13019,6 +13019,19 @@
           "searching": {
             "status": "Pesquisando na web"
           }
+        },
+        "canvas": {
+          "creating": {
+            "status": "Criando o canvas…"
+          },
+          "generated": {
+            "status": "Canvas pronto"
+          },
+          "card": {
+            "subtitle": "Texto",
+            "fallbackTitle": "Canvas de pesquisa",
+            "openAction": "Abrir o canvas"
+          }
         }
       },
       "toolbar": {
@@ -13629,6 +13642,26 @@
       },
       "incognito": {
         "title": "Você está no modo anônimo"
+      }
+    },
+    "canvasPanel": {
+      "panel": {
+        "ariaLabel": "Painel do canvas",
+        "fallbackTitle": "Canvas de pesquisa",
+        "writing": "Escrevendo o canvas…",
+        "ready": "Documento de pesquisa"
+      },
+      "toolbar": {
+        "edit": "Editar",
+        "copy": "Copiar",
+        "download": "Baixar",
+        "translate": "Traduzir",
+        "close": "Fechar",
+        "save": "Salvar",
+        "cancelEdit": "Cancelar edição"
+      },
+      "translate": {
+        "error": "Falha na tradução. Tente novamente."
       }
     }
   },

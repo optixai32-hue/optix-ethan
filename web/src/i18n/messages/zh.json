@@ -13019,6 +13019,19 @@
           "searching": {
             "status": "正在搜索网页"
           }
+        },
+        "canvas": {
+          "creating": {
+            "status": "正在创建画布…"
+          },
+          "generated": {
+            "status": "画布已就绪"
+          },
+          "card": {
+            "subtitle": "文本",
+            "fallbackTitle": "研究画布",
+            "openAction": "打开画布"
+          }
         }
       },
       "toolbar": {
@@ -13629,6 +13642,26 @@
       },
       "incognito": {
         "title": "您处于无痕模式"
+      }
+    },
+    "canvasPanel": {
+      "panel": {
+        "ariaLabel": "画布面板",
+        "fallbackTitle": "研究画布",
+        "writing": "正在撰写画布…",
+        "ready": "研究文档"
+      },
+      "toolbar": {
+        "edit": "编辑",
+        "copy": "复制",
+        "download": "下载",
+        "translate": "翻译",
+        "close": "关闭",
+        "save": "保存",
+        "cancelEdit": "取消编辑"
+      },
+      "translate": {
+        "error": "翻译失败。请重试。"
       }
     }
   },

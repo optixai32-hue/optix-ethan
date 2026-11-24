@@ -29,6 +29,8 @@ import { FetchToolRenderer } from "./timeline/renderers/fetch/FetchToolRenderer"
 import { MemoryToolRenderer } from "./timeline/renderers/memory/MemoryToolRenderer";
 import { DeepResearchPlanRenderer } from "./timeline/renderers/deepresearch/DeepResearchPlanRenderer";
 import { ResearchAgentRenderer } from "./timeline/renderers/deepresearch/ResearchAgentRenderer";
+import { CanvasRenderer } from "./timeline/renderers/deepresearch/CanvasRenderer";
+import { isCanvasPackets } from "@/app/app/services/canvasUtils";
 import { WebSearchToolRenderer } from "./timeline/renderers/search/WebSearchToolRenderer";
 import { InternalSearchToolRenderer } from "./timeline/renderers/search/InternalSearchToolRenderer";
 
@@ -128,6 +130,12 @@ export function findRenderer(
     groupedPackets.packets.some((packet) => isDeepResearchPlanPacket(packet))
   ) {
     return DeepResearchPlanRenderer;
+  }
+  // The Deep Search canvas group (research_agent_start "Canvas : …") renders
+  // as its own canvas step — the document card — before the generic research
+  // agent check would claim it.
+  if (isCanvasPackets(groupedPackets.packets)) {
+    return CanvasRenderer;
   }
   if (groupedPackets.packets.some((packet) => isResearchAgentPacket(packet))) {
     return ResearchAgentRenderer;

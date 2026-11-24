@@ -13019,6 +13019,19 @@
           "searching": {
             "status": "ウェブを検索中"
           }
+        },
+        "canvas": {
+          "creating": {
+            "status": "キャンバスを作成中…"
+          },
+          "generated": {
+            "status": "キャンバス完成"
+          },
+          "card": {
+            "subtitle": "テキスト",
+            "fallbackTitle": "リサーチキャンバス",
+            "openAction": "キャンバスを開く"
+          }
         }
       },
       "toolbar": {
@@ -13629,6 +13642,26 @@
       },
       "incognito": {
         "title": "シークレットモードです"
+      }
+    },
+    "canvasPanel": {
+      "panel": {
+        "ariaLabel": "キャンバスパネル",
+        "fallbackTitle": "リサーチキャンバス",
+        "writing": "キャンバスを書き込み中…",
+        "ready": "リサーチドキュメント"
+      },
+      "toolbar": {
+        "edit": "編集",
+        "copy": "コピー",
+        "download": "ダウンロード",
+        "translate": "翻訳",
+        "close": "閉じる",
+        "save": "保存",
+        "cancelEdit": "編集をキャンセル"
+      },
+      "translate": {
+        "error": "翻訳に失敗しました。もう一度お試しください。"
       }
     }
   },

@@ -13019,6 +13019,19 @@
           "searching": {
             "status": "Recherche sur le web"
           }
+        },
+        "canvas": {
+          "creating": {
+            "status": "Création du canvas…"
+          },
+          "generated": {
+            "status": "Canvas prêt"
+          },
+          "card": {
+            "subtitle": "Texte",
+            "fallbackTitle": "Canvas de recherche",
+            "openAction": "Ouvrir le canvas"
+          }
         }
       },
       "toolbar": {
@@ -13629,6 +13642,26 @@
       },
       "incognito": {
         "title": "Vous êtes en navigation privée"
+      }
+    },
+    "canvasPanel": {
+      "panel": {
+        "ariaLabel": "Panneau du canvas",
+        "fallbackTitle": "Canvas de recherche",
+        "writing": "Rédaction du canvas en cours…",
+        "ready": "Document de recherche"
+      },
+      "toolbar": {
+        "edit": "Modifier",
+        "copy": "Copier",
+        "download": "Télécharger",
+        "translate": "Traduire",
+        "close": "Fermer",
+        "save": "Enregistrer",
+        "cancelEdit": "Annuler la modification"
+      },
+      "translate": {
+        "error": "La traduction a échoué. Réessayez."
       }
     }
   },

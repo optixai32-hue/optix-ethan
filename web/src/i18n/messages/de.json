@@ -13019,6 +13019,19 @@
           "searching": {
             "status": "Durchsucht das Web"
           }
+        },
+        "canvas": {
+          "creating": {
+            "status": "Canvas wird erstellt…"
+          },
+          "generated": {
+            "status": "Canvas bereit"
+          },
+          "card": {
+            "subtitle": "Text",
+            "fallbackTitle": "Recherche-Canvas",
+            "openAction": "Canvas öffnen"
+          }
         }
       },
       "toolbar": {
@@ -13629,6 +13642,26 @@
       },
       "incognito": {
         "title": "Sie sind inkognito"
+      }
+    },
+    "canvasPanel": {
+      "panel": {
+        "ariaLabel": "Canvas-Panel",
+        "fallbackTitle": "Recherche-Canvas",
+        "writing": "Canvas wird geschrieben…",
+        "ready": "Recherche-Dokument"
+      },
+      "toolbar": {
+        "edit": "Bearbeiten",
+        "copy": "Kopieren",
+        "download": "Herunterladen",
+        "translate": "Übersetzen",
+        "close": "Schließen",
+        "save": "Speichern",
+        "cancelEdit": "Bearbeiten abbrechen"
+      },
+      "translate": {
+        "error": "Übersetzung fehlgeschlagen. Bitte erneut versuchen."
       }
     }
   },

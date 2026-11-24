@@ -13019,6 +13019,19 @@
           "searching": {
             "status": "جارٍ البحث في الويب"
           }
+        },
+        "canvas": {
+          "creating": {
+            "status": "جارٍ إنشاء اللوحة…"
+          },
+          "generated": {
+            "status": "اللوحة جاهزة"
+          },
+          "card": {
+            "subtitle": "نص",
+            "fallbackTitle": "لوحة البحث",
+            "openAction": "افتح اللوحة"
+          }
         }
       },
       "toolbar": {
@@ -13629,6 +13642,26 @@
       },
       "incognito": {
         "title": "أنت في وضع التخفي"
+      }
+    },
+    "canvasPanel": {
+      "panel": {
+        "ariaLabel": "لوحة الكانفس",
+        "fallbackTitle": "لوحة البحث",
+        "writing": "جارٍ كتابة اللوحة…",
+        "ready": "مستند البحث"
+      },
+      "toolbar": {
+        "edit": "تعديل",
+        "copy": "نسخ",
+        "download": "تنزيل",
+        "translate": "ترجم",
+        "close": "إغلاق",
+        "save": "حفظ",
+        "cancelEdit": "إلغاء التعديل"
+      },
+      "translate": {
+        "error": "فشل الترجمة. حاول مرة أخرى."
       }
     }
   },

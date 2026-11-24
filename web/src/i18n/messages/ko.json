@@ -13019,6 +13019,19 @@
           "searching": {
             "status": "웹 검색 중"
           }
+        },
+        "canvas": {
+          "creating": {
+            "status": "캔버스 생성 중…"
+          },
+          "generated": {
+            "status": "캔버스 준비됨"
+          },
+          "card": {
+            "subtitle": "텍스트",
+            "fallbackTitle": "리서치 캔버스",
+            "openAction": "캔버스 열기"
+          }
         }
       },
       "toolbar": {
@@ -13629,6 +13642,26 @@
       },
       "incognito": {
         "title": "시크릿 모드입니다"
+      }
+    },
+    "canvasPanel": {
+      "panel": {
+        "ariaLabel": "캔버스 패널",
+        "fallbackTitle": "리서치 캔버스",
+        "writing": "캔버스 작성 중…",
+        "ready": "리서치 문서"
+      },
+      "toolbar": {
+        "edit": "편집",
+        "copy": "복사",
+        "download": "다운로드",
+        "translate": "번역",
+        "close": "닫기",
+        "save": "저장",
+        "cancelEdit": "편집 취소"
+      },
+      "translate": {
+        "error": "번역에 실패했습니다. 다시 시도하세요."
       }
     }
   },

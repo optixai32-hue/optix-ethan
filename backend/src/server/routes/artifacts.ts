@@ -25,6 +25,7 @@ import {
   updateArtifact,
   type ArtifactPatch,
 } from "../../craft/artifacts";
+import { getLLMProvider } from "../../llm/factory";
 import { InvalidRequestError } from "../../utils/errors";
 import { getLogger } from "../../utils/logger";
 import { requireUser } from "./connectors";
@@ -98,4 +99,47 @@ artifactsRoutes.delete("/:id", async (c) => {
   const user = await requireUser(c);
   const deleted = await deleteArtifact(user.id, c.req.param("id"));
   return c.json({ deleted });
+});
+
+const translateSchema = z.object({
+  content: z.string().min(1).max(60_000),
+  language: z.string().min(1).max(80),
+});
+
+/**
+ * Translate a canvas document (the Deep Search canvas panel's Traduire
+ * action). Pure text-in/text-out: the caller keeps ownership of the
+ * original (translation lives in the panel state, the artifact is not
+ * overwritten).
+ */
+artifactsRoutes.post("/translate", async (c) => {
+  const _user = await requireUser(c);
+  const body = parseBody(translateSchema.safeParse(await c.req.json()));
+
+  const provider = await getLLMProvider();
+  const translated = await provider.complete(
+    [
+      {
+        role: "system",
+        content: [
+          "You are a professional document translator.",
+          "Translate the provided markdown document into the target language.",
+          "Preserve the markdown structure EXACTLY: heading levels, numbered and bulleted lists, bold and italic markers, tables (same columns and rows order), links (translate their visible text but keep the URLs unchanged), and citation markers like [1], [2] as-is.",
+          "Translate naturally for a native reader of the target language; keep proper nouns, brand names, and model/product names in their usual form.",
+          "Output ONLY the translated markdown document — no commentary, no fences, no explanation before or after.",
+        ].join("\n"),
+      },
+      {
+        role: "user",
+        content: `Target language: ${body.language}\n\nDocument to translate:\n\n${body.content}`,
+      },
+    ],
+    { maxTokens: 12_000 },
+  );
+
+  const content = (translated.content ?? "").trim();
+  if (!content) {
+    throw new InvalidRequestError("translation produced no content");
+  }
+  return c.json({ content });
 });
