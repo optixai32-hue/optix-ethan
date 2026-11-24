@@ -44,7 +44,6 @@ import {
 import { getLLMProvider } from "../llm/factory";
 import type { LLMMessage, LLMToolSpec } from "../llm/types";
 import { StreamEmitter } from "./emitter";
-import { runDeepResearch } from "./deep_research";
 import { StreamBuffer } from "./stream_buffer";
 import type { Packet } from "./models";
 import {
@@ -64,6 +63,8 @@ import type { CitationInfoEvent } from "../rag/citations";
 import { getTool, listTools } from "../tools/registry";
 import { registerBuiltInTools } from "../tools/built_in_tools";
 import type { Tool } from "../tools/interface";
+import { runDeepResearch, runCanvasPhase } from "./deep_research";
+import { createArtifact } from "../craft/artifacts";
 
 const logger = getLogger("chat.process_message");
 
@@ -588,10 +589,76 @@ export async function processMessage(
               });
               // The reports become in-memory context ahead of the agent loop.
               inMemory.push(...research.contextMessages);
+              let cursor = research.nextTurn;
+
+              // ---- Canvas phase (Deep Search): the research brief document
+              // becomes its own REAL timeline step in the pile — placed
+              // BETWEEN the research steps and the final answer — whose
+              // document display streams the canvas markdown (the frontend's
+              // research-agent renderer renders it inline with its
+              // expandable view, the canvas "Agrandir" equivalent). The
+              // timeline reads: Plan -> Research Agent 1..N -> Canvas ->
+              // Thinking -> answer -> Done.
+              if (
+                !runAbort.signal.aborted &&
+                research.docs.length > 0 &&
+                research.reports.length > 0
+              ) {
+                // Numbered source list with the GLOBAL citation numbers so
+                // the canvas's [N] markers match the final answer's.
+                const numbered = [...citationMapping.entries()].sort(
+                  (a, b) => a[0] - b[0],
+                );
+                const sourcesBlock = numbered
+                  .map(([n, d]) => {
+                    const title =
+                      d.semantic_identifier ?? d.title ?? d.document_id;
+                    const link = d.link ?? "";
+                    return `[${n}] ${title}${link ? ` — ${link}` : ""}`;
+                  })
+                  .join("\n");
+                const docsInOrder = numbered.map(([, d]) => d);
+
+                const canvas = await runCanvasPhase({
+                  provider,
+                  emitter,
+                  query: opts.message,
+                  reports: research.reports,
+                  sourcesBlock,
+                  docs: docsInOrder,
+                  startTurn: cursor,
+                  signal: runAbort.signal,
+                });
+                cursor = canvas.nextTurn;
+
+                // Persist the canvas as a chat-session artifact (the canvas
+                // is saved with the conversation; the artifacts REST surface
+                // serves it for copy/download).
+                try {
+                  await createArtifact(opts.user.user.id, {
+                    chatSessionId: session.id,
+                    title: canvas.canvasTitle,
+                    content: canvas.canvasContent,
+                  });
+                } catch (err) {
+                  logger.warning("canvas artifact persistence failed", {
+                    error: String(err),
+                  });
+                }
+
+                // Final-answer guidance: the top takeaway in chat, the full
+                // brief in the canvas step — mirroring the reference flow.
+                inMemory.push({
+                  role: "system",
+                  content: `A research canvas document titled "${canvas.canvasTitle}" was produced and shown to the user as a timeline step (with the ranked source table and open questions). In your final answer: give the single most important takeaway in a short paragraph or two with [N] citations, then close by telling the user the full brief (detailed findings, ranked source table, open questions) is in the research canvas "${canvas.canvasTitle}". Do NOT reproduce the whole canvas in the answer — summarize the essence and point to it.`,
+                });
+              }
+
               // The agent loop continues on a FRESH turn after the research
-              // phases; the frontend closes the research steps (SECTION_END
-              // injection) as soon as the first packet of this new turn lands.
-              nextTurn = research.nextTurn;
+              // and canvas phases; the frontend closes those steps
+              // (SECTION_END injection) as soon as the first packet of this
+              // new turn lands.
+              nextTurn = cursor;
             } catch (err) {
               logger.warning("deep research loop failed", { error: String(err) });
             }
