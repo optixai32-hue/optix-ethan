@@ -13024,13 +13024,20 @@
           "creating": {
             "status": "Canvas wird erstellt…"
           },
-          "generated": {
-            "status": "Canvas bereit"
+          "edited": {
+            "status": "Ein Canvas bearbeitet"
+          },
+          "searches": {
+            "count": "{count, plural, one {# Suche} other {# Suchen}} durchgeführt"
           },
           "card": {
             "subtitle": "Text",
             "fallbackTitle": "Recherche-Canvas",
-            "openAction": "Canvas öffnen"
+            "expand": "Vergrößern",
+            "foldAction": "Canvas zurück in den Chat klappen",
+            "edit": "Bearbeiten",
+            "copy": "Kopieren",
+            "download": "Herunterladen"
           }
         }
       },
@@ -13646,22 +13653,56 @@
     },
     "canvasPanel": {
       "panel": {
-        "ariaLabel": "Canvas-Panel",
+        "ariaLabel": "Canvas-Bereich",
         "fallbackTitle": "Recherche-Canvas",
-        "writing": "Canvas wird geschrieben…",
-        "ready": "Recherche-Dokument"
+        "writing": "Canvas wird geschrieben…"
       },
       "toolbar": {
-        "edit": "Bearbeiten",
-        "copy": "Kopieren",
-        "download": "Herunterladen",
-        "translate": "Übersetzen",
-        "close": "Schließen",
-        "save": "Speichern",
-        "cancelEdit": "Bearbeiten abbrechen"
+        "finishingTouch": "Letzten Schliff hinzufügen",
+        "format": "Format",
+        "length": "Länge",
+        "tone": "Tonalität",
+        "audience": "Zielgruppe",
+        "translate": "Übersetzen"
       },
-      "translate": {
-        "error": "Übersetzung fehlgeschlagen. Bitte erneut versuchen."
+      "options": {
+        "format": {
+          "report": "Detaillierter Bericht",
+          "brief": "Kurzusammenfassung",
+          "bullets": "Aufzählung"
+        },
+        "length": {
+          "shorter": "Kürzer",
+          "longer": "Länger"
+        },
+        "tone": {
+          "professional": "Professionell",
+          "neutral": "Neutral",
+          "conversational": "Gesprächig"
+        },
+        "audience": {
+          "general": "Allgemeines Publikum",
+          "experts": "Experten",
+          "students": "Studierende"
+        },
+        "languages": {
+          "chinese": "Chinesisch",
+          "english": "Englisch",
+          "french": "Französisch",
+          "german": "Deutsch",
+          "greek": "Griechisch",
+          "russian": "Russisch",
+          "spanish": "Spanisch"
+        }
+      },
+      "actions": {
+        "translateInto": "Den Text ins {language} übersetzen",
+        "finishingTouch": "Dem Text den letzten Schliff geben",
+        "formatAs": "Den Text als {option} formatieren",
+        "shorten": "Den Text kürzen",
+        "lengthen": "Den Text erweitern",
+        "tone": "Die Tonalität des Textes anpassen: {option}",
+        "audience": "Den Text an das Publikum anpassen: {option}"
       }
     }
   },

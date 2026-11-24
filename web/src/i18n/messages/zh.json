@@ -13024,13 +13024,20 @@
           "creating": {
             "status": "正在创建画布…"
           },
-          "generated": {
-            "status": "画布已就绪"
+          "edited": {
+            "status": "已编辑画布"
+          },
+          "searches": {
+            "count": "已完成 {count} 次搜索"
           },
           "card": {
             "subtitle": "文本",
             "fallbackTitle": "研究画布",
-            "openAction": "打开画布"
+            "expand": "放大",
+            "foldAction": "将画布折叠回对话",
+            "edit": "编辑",
+            "copy": "复制",
+            "download": "下载"
           }
         }
       },
@@ -13648,20 +13655,54 @@
       "panel": {
         "ariaLabel": "画布面板",
         "fallbackTitle": "研究画布",
-        "writing": "正在撰写画布…",
-        "ready": "研究文档"
+        "writing": "正在撰写画布…"
       },
       "toolbar": {
-        "edit": "编辑",
-        "copy": "复制",
-        "download": "下载",
-        "translate": "翻译",
-        "close": "关闭",
-        "save": "保存",
-        "cancelEdit": "取消编辑"
+        "finishingTouch": "添加点睛之笔",
+        "format": "格式",
+        "length": "长度",
+        "tone": "语气",
+        "audience": "受众",
+        "translate": "翻译"
       },
-      "translate": {
-        "error": "翻译失败。请重试。"
+      "options": {
+        "format": {
+          "report": "详细报告",
+          "brief": "综合摘要",
+          "bullets": "项目符号列表"
+        },
+        "length": {
+          "shorter": "更短",
+          "longer": "更长"
+        },
+        "tone": {
+          "professional": "专业",
+          "neutral": "中性",
+          "conversational": "口语化"
+        },
+        "audience": {
+          "general": "大众",
+          "experts": "专家",
+          "students": "学生"
+        },
+        "languages": {
+          "chinese": "中文",
+          "english": "英语",
+          "french": "法语",
+          "german": "德语",
+          "greek": "希腊语",
+          "russian": "俄语",
+          "spanish": "西班牙语"
+        }
+      },
+      "actions": {
+        "translateInto": "将文本翻译成{language}",
+        "finishingTouch": "为文本添加点睛之笔",
+        "formatAs": "将文本格式化为{option}",
+        "shorten": "缩短文本",
+        "lengthen": "扩充文本",
+        "tone": "调整文本语气：{option}",
+        "audience": "使文本适配受众：{option}"
       }
     }
   },

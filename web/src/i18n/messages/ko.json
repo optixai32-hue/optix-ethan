@@ -13024,13 +13024,20 @@
           "creating": {
             "status": "캔버스 생성 중…"
           },
-          "generated": {
-            "status": "캔버스 준비됨"
+          "edited": {
+            "status": "캔버스 편집됨"
+          },
+          "searches": {
+            "count": "{count}개의 검색 수행"
           },
           "card": {
             "subtitle": "텍스트",
             "fallbackTitle": "리서치 캔버스",
-            "openAction": "캔버스 열기"
+            "expand": "확대",
+            "foldAction": "캔버스를 채팅으로 접기",
+            "edit": "편집",
+            "copy": "복사",
+            "download": "다운로드"
           }
         }
       },
@@ -13648,20 +13655,54 @@
       "panel": {
         "ariaLabel": "캔버스 패널",
         "fallbackTitle": "리서치 캔버스",
-        "writing": "캔버스 작성 중…",
-        "ready": "리서치 문서"
+        "writing": "캔버스 작성 중…"
       },
       "toolbar": {
-        "edit": "편집",
-        "copy": "복사",
-        "download": "다운로드",
-        "translate": "번역",
-        "close": "닫기",
-        "save": "저장",
-        "cancelEdit": "편집 취소"
+        "finishingTouch": "마감 손질 추가",
+        "format": "형식",
+        "length": "길이",
+        "tone": "톤",
+        "audience": "독자",
+        "translate": "번역"
       },
-      "translate": {
-        "error": "번역에 실패했습니다. 다시 시도하세요."
+      "options": {
+        "format": {
+          "report": "상세 보고서",
+          "brief": "요약 노트",
+          "bullets": "글머리 기호 목록"
+        },
+        "length": {
+          "shorter": "더 짧게",
+          "longer": "더 길게"
+        },
+        "tone": {
+          "professional": "전문적",
+          "neutral": "중립적",
+          "conversational": "구어체"
+        },
+        "audience": {
+          "general": "일반 대중",
+          "experts": "전문가",
+          "students": "학생"
+        },
+        "languages": {
+          "chinese": "중국어",
+          "english": "영어",
+          "french": "프랑스어",
+          "german": "독일어",
+          "greek": "그리스어",
+          "russian": "러시아어",
+          "spanish": "스페인어"
+        }
+      },
+      "actions": {
+        "translateInto": "텍스트를 {language}(으)로 번역",
+        "finishingTouch": "텍스트에 마감 손질 추가",
+        "formatAs": "텍스트를 {option}(으)로 서식 지정",
+        "shorten": "텍스트 줄이기",
+        "lengthen": "텍스트 확장",
+        "tone": "텍스트 톤 조정: {option}",
+        "audience": "텍스트를 독자에 맞게 조정: {option}"
       }
     }
   },

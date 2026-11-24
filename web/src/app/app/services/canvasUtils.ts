@@ -15,13 +15,23 @@ import {
  * The document itself streams through the group's parent
  * `intermediate_report_delta` packets.
  *
- * Two UI surfaces read the same packets:
+ * Three UI surfaces read the same packets:
  *  - the canvas step card in the message timeline (CanvasRenderer)
  *  - the Deep Search canvas side panel (ChatCanvasPanel)
+ *  - the canvas action pill (CanvasActionPill — the panel toolbar actions
+ *    submitted as chat messages)
  */
 
 /** Backend marker: research_agent_start.research_task prefix identifying the Deep Search canvas group. */
 export const CANVAS_TASK_PREFIX = "Canvas : ";
+
+/**
+ * Frontend marker: user messages submitted by the canvas panel's toolbar
+ * (Traduire, Ajouter la touche finale, Format, …) carry this prefix. The
+ * backend strips it and routes the message to the canvas-action flow; the
+ * frontend renders the message as the compact canvas action pill.
+ */
+export const CANVAS_ACTION_PREFIX = "[canvas] ";
 
 /** True when a research_task string marks the Deep Search canvas step. */
 export function isCanvasTask(
@@ -37,6 +47,16 @@ export function isCanvasPackets(packets: Packet[]): boolean {
       p.obj.type === PacketType.RESEARCH_AGENT_START &&
       isCanvasTask((p.obj as ResearchAgentStart).research_task),
   );
+}
+
+/** True when a user message text is a canvas panel toolbar action (pill). */
+export function isCanvasActionMessage(message: string | null | undefined) {
+  return typeof message === "string" && message.startsWith(CANVAS_ACTION_PREFIX);
+}
+
+/** The display text of a canvas action message (marker stripped). */
+export function canvasActionText(message: string): string {
+  return message.slice(CANVAS_ACTION_PREFIX.length).trim();
 }
 
 export interface CanvasData {
@@ -72,8 +92,24 @@ function canvasTurnClosed(packets: Packet[], turn: number): boolean {
 }
 
 /**
+ * Count the search steps the message actually ran — the "Effectué N
+ * recherches" (performed N searches) line above the canvas card in the
+ * reference video. Each SEARCH_TOOL_START packet is one search row in the
+ * timeline (the deep research agents nest internal + web searches).
+ */
+export function canvasSearchCount(message: Message): number {
+  return message.packets.filter(
+    (p) => p.obj.type === PacketType.SEARCH_TOOL_START,
+  ).length;
+}
+
+/**
  * Extract the Deep Search canvas from an assistant message's packets
  * (scans the whole message). Returns null when the message has no canvas.
+ *
+ * When several canvas groups live in one message (the original canvas and a
+ * later action-updated one, e.g. a translation), the LATEST canvas is the
+ * message's current document.
  *
  * `isGenerating` comes from the caller (message.is_generating for multi-model,
  * the session's chatState for single-model streams) — the packet data alone
@@ -83,11 +119,16 @@ export function extractCanvasFromMessage(
   message: Message,
   isGenerating: boolean,
 ): CanvasData | null {
-  const startPacket = message.packets.find(
-    (p) =>
+  // The message's CURRENT canvas = the last canvas start packet.
+  let startPacket: Packet | undefined;
+  for (const p of message.packets) {
+    if (
       p.obj.type === PacketType.RESEARCH_AGENT_START &&
-      isCanvasTask((p.obj as ResearchAgentStart).research_task),
-  );
+      isCanvasTask((p.obj as ResearchAgentStart).research_task)
+    ) {
+      startPacket = p;
+    }
+  }
   if (!startPacket) return null;
 
   const task = (startPacket.obj as ResearchAgentStart).research_task;

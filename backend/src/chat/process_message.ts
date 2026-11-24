@@ -64,7 +64,13 @@ import { getTool, listTools } from "../tools/registry";
 import { registerBuiltInTools } from "../tools/built_in_tools";
 import type { Tool } from "../tools/interface";
 import { runDeepResearch, runCanvasPhase } from "./deep_research";
-import { createArtifact } from "../craft/artifacts";
+import {
+  matchTranslateInstruction,
+  parseCanvasAction,
+  runCanvasAction,
+  streamCanvasActionAnswer,
+} from "./canvas_actions";
+import { createArtifact, listArtifacts, updateArtifact } from "../craft/artifacts";
 
 const logger = getLogger("chat.process_message");
 
@@ -476,6 +482,100 @@ export async function processMessage(
           // in-memory assistant/tool messages from this turn's tool loop.
           const rows = await getChatMessages(session.id);
           const inMemory: LLMMessage[] = [];
+
+          // ---- Canvas toolbar action (Deep Search canvas panel): the
+          // "[canvas] …" pill message refines/translates the session's canvas
+          // document (the reference video's split-view tools — Traduire,
+          // Ajouter la touche finale, Format, Longueur, Tonalité, Public).
+          // Flow: brief Thinking -> the updated document streams as a REAL
+          // canvas step -> the artifact row updates -> a brief answer
+          // streams in the chat.
+          const canvasInstruction = parseCanvasAction(opts.message);
+          if (canvasInstruction) {
+            const canvasArtifacts = await listArtifacts(
+              opts.user.user.id,
+              session.id,
+            );
+            const canvasArtifact = canvasArtifacts[0] ?? null;
+            if (canvasArtifact) {
+              const translateLanguage = matchTranslateInstruction(canvasInstruction);
+              const action = await runCanvasAction({
+                provider,
+                emitter,
+                instruction: canvasInstruction,
+                translateLanguage,
+                artifact: {
+                  title: canvasArtifact.title,
+                  content: canvasArtifact.content,
+                },
+                startTurn: 0,
+                signal: runAbort.signal,
+              });
+
+              // The canvas persists with the session (updated content).
+              try {
+                await updateArtifact(opts.user.user.id, canvasArtifact.id, {
+                  content: action.updatedContent,
+                });
+              } catch (err) {
+                logger.warning("canvas artifact update failed", {
+                  error: String(err),
+                });
+              }
+
+              // The brief answer streams AFTER the canvas step (turn 2).
+              streamCanvasActionAnswer(emitter, action.answerText, 2);
+
+              // Persist the response + raw packet list so a reloaded session
+              // replays the exact timeline (Thinking -> Canvas -> answer).
+              const savedAction = await appendChatMessage(
+                session.id,
+                action.answerText,
+                "assistant",
+                emitter.getPackets(),
+              );
+
+              // Final line: bare ChatMessageDetail (the frontend keys its
+              // tree/URL/citation state on it).
+              push(
+                JSON.stringify({
+                  chat_session_id: session.id,
+                  message_id: savedAction.id,
+                  message_type: "assistant",
+                  research_type: null,
+                  parent_message: userMessage.id,
+                  latest_child_message: null,
+                  message: action.answerText,
+                  rephrased_query: null,
+                  context_docs: [],
+                  time_sent: new Date().toISOString(),
+                  overridden_model: persona.llm_model_version_override ?? "",
+                  alternate_assistant_id: null,
+                  citations: {},
+                  files: [],
+                  tool_call: null,
+                  current_feedback: null,
+                  processing_duration_seconds:
+                    Math.round(((Date.now() - turnStartedAt) / 1000) * 100) /
+                    100,
+                  sub_questions: [],
+                  comments: null,
+                  parentMessageId: null,
+                  refined_answer_improvement: null,
+                  is_agentic: false,
+                  preferred_response_id: null,
+                  model_display_name:
+                    persona.llm_model_version_override ?? "",
+                  error: null,
+                }) + "\n",
+              );
+              emitter.stop(0);
+              return;
+            }
+            // No canvas artifact: fall through to the normal agent loop
+            // (the pill only appears when the panel is open, so this is the
+            // degenerate path — the message is handled as an ordinary chat).
+          }
 
           // Tool context factory — used by the in-loop tool executions below.
           // `turn`/`tab` are the packet placement (turn_index/tab_index): the

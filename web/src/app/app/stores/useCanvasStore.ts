@@ -1,14 +1,26 @@
 import { create } from "zustand";
 import type { CanvasData } from "../services/canvasUtils";
 
+/** A canvas toolbar action waiting to be submitted as a pill message. */
+export interface CanvasPendingAction {
+  /** Monotonic id (Date.now) so the bridge can consume exactly one action. */
+  id: number;
+  /** The pill message text (without the [canvas] marker). */
+  text: string;
+}
+
 /**
  * The Deep Search canvas side panel state (chat + canvas split view).
  *
- * Driven by two sources:
- *  - the streaming watcher inside ChatCanvasPanel (auto-opens the panel while
- *    the canvas document streams, keeps the content live)
- *  - the canvas step card in the timeline (opens the panel for any canvas,
- *    including completed ones from persisted sessions)
+ * Driven by three sources:
+ *  - the canvas card in the message timeline: "Agrandir" expands the card's
+ *    document into the side panel (and the card collapses to the compact
+ *    pill); clicking the pill again folds the panel back into the card
+ *  - the stream watcher inside ChatCanvasPanel: while the panel is open it
+ *    follows the live document (canvas updates included)
+ *  - the panel toolbar: refinement/translate actions enqueue pill messages
+ *    (consumed by the AppPage bridge and submitted through the normal chat
+ *    flow)
  */
 interface CanvasStore {
   visible: boolean;
@@ -17,20 +29,28 @@ interface CanvasStore {
   isStreaming: boolean;
   /** Assistant message (tree node id) whose canvas is displayed. */
   nodeId: number | null;
-  /** Message whose canvas already auto-opened (one auto-open per message). */
-  autoOpenedNodeId: number | null;
-  /** Message whose panel the user explicitly closed (no re-auto-open). */
-  dismissedNodeId: number | null;
+  /**
+   * Message whose canvas is expanded in the split view — the timeline card
+   * renders as the compact pill while this is set (the reference video's
+   * collapsed state).
+   */
+  expandedNodeId: number | null;
+  /** A toolbar action waiting for the chat bridge. */
+  pendingAction: CanvasPendingAction | null;
 
-  /** Open the panel for a canvas (card click / auto-open). */
+  /** Expand the card's canvas into the side panel. */
   open: (data: CanvasData) => void;
-  /** Close the panel (user action only). */
+  /** Fold the panel back into the timeline card (user action only). */
   close: () => void;
-  /** Live stream refresh — only while the panel shows that canvas. */
+  /** Live stream refresh — while the panel shows that canvas, and any
+   * newly-streaming canvas while the panel stays open. */
   streamUpdate: (data: CanvasData) => void;
-  /** Replace the content (edit save / translated document). */
+  /** Replace the content (edit save inside the panel). */
   setContent: (content: string) => void;
-  markAutoOpened: (nodeId: number) => void;
+  /** Queue a toolbar action as a pill message. */
+  enqueueAction: (text: string) => void;
+  /** The bridge consumed the queued action. */
+  consumeAction: (id: number) => void;
   /** Session switch / teardown — panel down, state cleared. */
   reset: () => void;
 }
@@ -41,8 +61,8 @@ export const useCanvasStore = create<CanvasStore>()((set) => ({
   content: "",
   isStreaming: false,
   nodeId: null,
-  autoOpenedNodeId: null,
-  dismissedNodeId: null,
+  expandedNodeId: null,
+  pendingAction: null,
 
   open: (data) =>
     set({
@@ -51,25 +71,36 @@ export const useCanvasStore = create<CanvasStore>()((set) => ({
       content: data.content,
       isStreaming: data.isStreaming,
       nodeId: data.nodeId,
+      expandedNodeId: data.nodeId,
     }),
 
   close: () =>
-    set((state) => ({ visible: false, dismissedNodeId: state.nodeId })),
+    set((state) => ({ visible: false, expandedNodeId: null, nodeId: state.nodeId })),
 
   streamUpdate: (data) =>
     set((state) =>
-      state.visible && state.nodeId === data.nodeId
+      state.visible && (state.nodeId === data.nodeId || data.isStreaming)
         ? {
             title: data.title,
             content: data.content,
             isStreaming: data.isStreaming,
+            nodeId: data.nodeId,
+            expandedNodeId: data.nodeId,
           }
         : {},
     ),
 
   setContent: (content) => set({ content }),
 
-  markAutoOpened: (nodeId) => set({ autoOpenedNodeId: nodeId }),
+  enqueueAction: (text) =>
+    set({ pendingAction: { id: Date.now(), text } }),
+
+  consumeAction: (id) =>
+    set((state) =>
+      state.pendingAction && state.pendingAction.id === id
+        ? { pendingAction: null }
+        : {},
+    ),
 
   reset: () =>
     set({
@@ -78,7 +109,7 @@ export const useCanvasStore = create<CanvasStore>()((set) => ({
       content: "",
       isStreaming: false,
       nodeId: null,
-      autoOpenedNodeId: null,
-      dismissedNodeId: null,
+      expandedNodeId: null,
+      pendingAction: null,
     }),
 }));

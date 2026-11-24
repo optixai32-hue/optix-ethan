@@ -56,6 +56,8 @@ import {
   useCurrentMessageHistory,
   useCurrentMessageTree,
 } from "@/app/app/stores/useChatSessionStore";
+import { useCanvasStore } from "@/app/app/stores/useCanvasStore";
+import { CANVAS_ACTION_PREFIX } from "@/app/app/services/canvasUtils";
 import {
   useCurrentChatState,
   useIsReady,
@@ -531,6 +533,24 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
     refreshChatSessions,
     onSubmit,
   });
+
+  // Canvas action bridge (additive — the Deep Search canvas panel's toolbar):
+  // each queued action (Traduire → "Anglais", Ajouter la touche finale, …)
+  // is submitted through the normal chat flow as a `[canvas] ` pill message,
+  // so the bot thinks and answers in the chat while the updated canvas
+  // document streams back into the panel.
+  const canvasPendingAction = useCanvasStore((s) => s.pendingAction);
+  const canvasBridgeChatState = useCurrentChatState();
+  useEffect(() => {
+    const action = useCanvasStore.getState().pendingAction;
+    if (!action || canvasBridgeChatState !== "input") return;
+    useCanvasStore.getState().consumeAction(action.id);
+    void onSubmit({
+      message: `${CANVAS_ACTION_PREFIX}${action.text}`,
+      currentMessageFiles: [],
+      deepResearch: false,
+    });
+  }, [canvasPendingAction, canvasBridgeChatState, onSubmit]);
 
   // A link can arrive carrying both a prompt and a search scope. Declared here
   // because it submits, so it needs `onSubmit` above it.

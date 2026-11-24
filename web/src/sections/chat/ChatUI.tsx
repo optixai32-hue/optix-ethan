@@ -4,6 +4,11 @@ import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { Message } from "@/app/app/interfaces";
 import { OnyxDocument, MinimalOnyxDocument } from "@/lib/search/types";
 import HumanMessage from "@/app/app/message/HumanMessage";
+import { CanvasActionPill } from "@/components/canvas/CanvasActionPill";
+import {
+  canvasActionText,
+  isCanvasActionMessage,
+} from "@/app/app/services/canvasUtils";
 import { ErrorBanner } from "@/app/app/message/Resubmit";
 import { MinimalAgent } from "@/lib/agents/types";
 import { LlmDescriptor, LlmManager } from "@/lib/hooks";
@@ -196,6 +201,25 @@ const ChatUI = React.memo(
                 messages.length > i + 1 ? messages[i + 1] : null;
               const multiModelResponses =
                 getMultiModelResponsesForMessage(message);
+
+              // Canvas panel toolbar actions render as the compact canvas
+              // pill (文A + action text) instead of the standard bubble — an
+              // additive branch: every other user message is untouched.
+              if (isCanvasActionMessage(message.message)) {
+                return (
+                  <div
+                    id={messageReactComponentKey}
+                    key={messageReactComponentKey}
+                    className="flex flex-col gap-12 w-full"
+                  >
+                    <div className={cn("w-full self-center", msgWidth)}>
+                      <CanvasActionPill
+                        text={canvasActionText(message.message)}
+                      />
+                    </div>
+                  </div>
+                );
+              }
 
               return (
                 <div

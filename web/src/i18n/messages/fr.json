@@ -13022,15 +13022,22 @@
         },
         "canvas": {
           "creating": {
-            "status": "Création du canvas…"
+            "status": "Création du Canvas…"
           },
-          "generated": {
-            "status": "Canvas prêt"
+          "edited": {
+            "status": "Modifié un Canvas"
+          },
+          "searches": {
+            "count": "Effectué {count, plural, one {# recherche} other {# recherches}}"
           },
           "card": {
             "subtitle": "Texte",
             "fallbackTitle": "Canvas de recherche",
-            "openAction": "Ouvrir le canvas"
+            "expand": "Agrandir",
+            "foldAction": "Rabattre le canvas dans la conversation",
+            "edit": "Modifier",
+            "copy": "Copier",
+            "download": "Télécharger"
           }
         }
       },
@@ -13646,22 +13653,56 @@
     },
     "canvasPanel": {
       "panel": {
-        "ariaLabel": "Panneau du canvas",
+        "ariaLabel": "Panneau du Canvas",
         "fallbackTitle": "Canvas de recherche",
-        "writing": "Rédaction du canvas en cours…",
-        "ready": "Document de recherche"
+        "writing": "Rédaction du Canvas…"
       },
       "toolbar": {
-        "edit": "Modifier",
-        "copy": "Copier",
-        "download": "Télécharger",
-        "translate": "Traduire",
-        "close": "Fermer",
-        "save": "Enregistrer",
-        "cancelEdit": "Annuler la modification"
+        "finishingTouch": "Ajouter la touche finale",
+        "format": "Format",
+        "length": "Longueur",
+        "tone": "Tonalité",
+        "audience": "Public",
+        "translate": "Traduire"
       },
-      "translate": {
-        "error": "La traduction a échoué. Réessayez."
+      "options": {
+        "format": {
+          "report": "Rapport détaillé",
+          "brief": "Note de synthèse",
+          "bullets": "Liste à puces"
+        },
+        "length": {
+          "shorter": "Plus court",
+          "longer": "Plus long"
+        },
+        "tone": {
+          "professional": "Professionnelle",
+          "neutral": "Neutre",
+          "conversational": "Conversationnelle"
+        },
+        "audience": {
+          "general": "Grand public",
+          "experts": "Experts",
+          "students": "Étudiants"
+        },
+        "languages": {
+          "chinese": "Chinois",
+          "english": "Anglais",
+          "french": "Français",
+          "german": "Allemand",
+          "greek": "Grec",
+          "russian": "Russe",
+          "spanish": "Espagnol"
+        }
+      },
+      "actions": {
+        "translateInto": "Traduire le texte en {language}",
+        "finishingTouch": "Ajouter la touche finale au texte",
+        "formatAs": "Formater le texte en {option}",
+        "shorten": "Raccourcir le texte",
+        "lengthen": "Développer le texte",
+        "tone": "Ajuster la tonalité du texte : {option}",
+        "audience": "Adapter le texte au public : {option}"
       }
     }
   },

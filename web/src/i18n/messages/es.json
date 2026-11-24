@@ -13024,13 +13024,20 @@
           "creating": {
             "status": "Creando el canvas…"
           },
-          "generated": {
-            "status": "Canvas listo"
+          "edited": {
+            "status": "Canvas editado"
+          },
+          "searches": {
+            "count": "{count, plural, one {# búsqueda realizada} other {# búsquedas realizadas}}"
           },
           "card": {
             "subtitle": "Texto",
             "fallbackTitle": "Canvas de investigación",
-            "openAction": "Abrir el canvas"
+            "expand": "Ampliar",
+            "foldAction": "Plegar el canvas de nuevo en el chat",
+            "edit": "Editar",
+            "copy": "Copiar",
+            "download": "Descargar"
           }
         }
       },
@@ -13648,20 +13655,54 @@
       "panel": {
         "ariaLabel": "Panel del canvas",
         "fallbackTitle": "Canvas de investigación",
-        "writing": "Escribiendo el canvas…",
-        "ready": "Documento de investigación"
+        "writing": "Escribiendo el canvas…"
       },
       "toolbar": {
-        "edit": "Editar",
-        "copy": "Copiar",
-        "download": "Descargar",
-        "translate": "Traducir",
-        "close": "Cerrar",
-        "save": "Guardar",
-        "cancelEdit": "Cancelar edición"
+        "finishingTouch": "Añadir el toque final",
+        "format": "Formato",
+        "length": "Longitud",
+        "tone": "Tono",
+        "audience": "Audiencia",
+        "translate": "Traducir"
       },
-      "translate": {
-        "error": "Error de traducción. Inténtalo de nuevo."
+      "options": {
+        "format": {
+          "report": "Informe detallado",
+          "brief": "Nota de síntesis",
+          "bullets": "Lista de viñetas"
+        },
+        "length": {
+          "shorter": "Más corto",
+          "longer": "Más largo"
+        },
+        "tone": {
+          "professional": "Profesional",
+          "neutral": "Neutro",
+          "conversational": "Conversacional"
+        },
+        "audience": {
+          "general": "Público general",
+          "experts": "Expertos",
+          "students": "Estudiantes"
+        },
+        "languages": {
+          "chinese": "Chino",
+          "english": "Inglés",
+          "french": "Francés",
+          "german": "Alemán",
+          "greek": "Griego",
+          "russian": "Ruso",
+          "spanish": "Español"
+        }
+      },
+      "actions": {
+        "translateInto": "Traducir el texto al {language}",
+        "finishingTouch": "Dar el toque final al texto",
+        "formatAs": "Formatear el texto como {option}",
+        "shorten": "Acortar el texto",
+        "lengthen": "Ampliar el texto",
+        "tone": "Ajustar el tono del texto: {option}",
+        "audience": "Adaptar el texto a la audiencia: {option}"
       }
     }
   },

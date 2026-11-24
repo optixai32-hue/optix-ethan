@@ -13024,13 +13024,20 @@
           "creating": {
             "status": "جارٍ إنشاء اللوحة…"
           },
-          "generated": {
-            "status": "اللوحة جاهزة"
+          "edited": {
+            "status": "تم تعديل لوحة"
+          },
+          "searches": {
+            "count": "تم إجراء {count} من عمليات البحث"
           },
           "card": {
             "subtitle": "نص",
-            "fallbackTitle": "لوحة البحث",
-            "openAction": "افتح اللوحة"
+            "fallbackTitle": "لوحة بحثية",
+            "expand": "تكبير",
+            "foldAction": "طي اللوحة مرة أخرى في الدردشة",
+            "edit": "تعديل",
+            "copy": "نسخ",
+            "download": "تنزيل"
           }
         }
       },
@@ -13646,22 +13653,56 @@
     },
     "canvasPanel": {
       "panel": {
-        "ariaLabel": "لوحة الكانفس",
-        "fallbackTitle": "لوحة البحث",
-        "writing": "جارٍ كتابة اللوحة…",
-        "ready": "مستند البحث"
+        "ariaLabel": "لوحة الكانفاس",
+        "fallbackTitle": "لوحة بحثية",
+        "writing": "جارٍ كتابة اللوحة…"
       },
       "toolbar": {
-        "edit": "تعديل",
-        "copy": "نسخ",
-        "download": "تنزيل",
-        "translate": "ترجم",
-        "close": "إغلاق",
-        "save": "حفظ",
-        "cancelEdit": "إلغاء التعديل"
+        "finishingTouch": "إضافة اللمسة الأخيرة",
+        "format": "التنسيق",
+        "length": "الطول",
+        "tone": "النبرة",
+        "audience": "الجمهور",
+        "translate": "ترجمة"
       },
-      "translate": {
-        "error": "فشل الترجمة. حاول مرة أخرى."
+      "options": {
+        "format": {
+          "report": "تقرير مفصل",
+          "brief": "موجز تحليلي",
+          "bullets": "قائمة نقطية"
+        },
+        "length": {
+          "shorter": "أقصر",
+          "longer": "أطول"
+        },
+        "tone": {
+          "professional": "احترافية",
+          "neutral": "محايدة",
+          "conversational": "حوارية"
+        },
+        "audience": {
+          "general": "الجمهور العام",
+          "experts": "الخبراء",
+          "students": "الطلاب"
+        },
+        "languages": {
+          "chinese": "الصينية",
+          "english": "الإنجليزية",
+          "french": "الفرنسية",
+          "german": "الألمانية",
+          "greek": "اليونانية",
+          "russian": "الروسية",
+          "spanish": "الإسبانية"
+        }
+      },
+      "actions": {
+        "translateInto": "ترجمة النص إلى {language}",
+        "finishingTouch": "إضافة اللمسة الأخيرة إلى النص",
+        "formatAs": "تنسيق النص كـ{option}",
+        "shorten": "تقصير النص",
+        "lengthen": "توسيع النص",
+        "tone": "ضبط نبرة النص: {option}",
+        "audience": "تكييف النص مع الجمهور: {option}"
       }
     }
   },

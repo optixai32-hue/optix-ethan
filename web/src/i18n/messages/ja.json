@@ -13024,13 +13024,20 @@
           "creating": {
             "status": "キャンバスを作成中…"
           },
-          "generated": {
-            "status": "キャンバス完成"
+          "edited": {
+            "status": "キャンバスを編集しました"
+          },
+          "searches": {
+            "count": "{count}件の検索を実行"
           },
           "card": {
             "subtitle": "テキスト",
             "fallbackTitle": "リサーチキャンバス",
-            "openAction": "キャンバスを開く"
+            "expand": "拡大",
+            "foldAction": "キャンバスをチャットに戻す",
+            "edit": "編集",
+            "copy": "コピー",
+            "download": "ダウンロード"
           }
         }
       },
@@ -13648,20 +13655,54 @@
       "panel": {
         "ariaLabel": "キャンバスパネル",
         "fallbackTitle": "リサーチキャンバス",
-        "writing": "キャンバスを書き込み中…",
-        "ready": "リサーチドキュメント"
+        "writing": "キャンバスを書き込み中…"
       },
       "toolbar": {
-        "edit": "編集",
-        "copy": "コピー",
-        "download": "ダウンロード",
-        "translate": "翻訳",
-        "close": "閉じる",
-        "save": "保存",
-        "cancelEdit": "編集をキャンセル"
+        "finishingTouch": "仕上げを追加",
+        "format": "フォーマット",
+        "length": "長さ",
+        "tone": "トーン",
+        "audience": "読者",
+        "translate": "翻訳"
       },
-      "translate": {
-        "error": "翻訳に失敗しました。もう一度お試しください。"
+      "options": {
+        "format": {
+          "report": "詳細レポート",
+          "brief": "要約ノート",
+          "bullets": "箇条書きリスト"
+        },
+        "length": {
+          "shorter": "短く",
+          "longer": "長く"
+        },
+        "tone": {
+          "professional": "フォーマル",
+          "neutral": "中立",
+          "conversational": "会話調"
+        },
+        "audience": {
+          "general": "一般向け",
+          "experts": "専門家",
+          "students": "学生"
+        },
+        "languages": {
+          "chinese": "中国語",
+          "english": "英語",
+          "french": "フランス語",
+          "german": "ドイツ語",
+          "greek": "ギリシャ語",
+          "russian": "ロシア語",
+          "spanish": "スペイン語"
+        }
+      },
+      "actions": {
+        "translateInto": "テキストを{language}に翻訳する",
+        "finishingTouch": "テキストに仕上げを加える",
+        "formatAs": "テキストを{option}として整形する",
+        "shorten": "テキストを短くする",
+        "lengthen": "テキストを詳しくする",
+        "tone": "テキストのトーンを調整：{option}",
+        "audience": "テキストを読者に合わせる：{option}"
       }
     }
   },

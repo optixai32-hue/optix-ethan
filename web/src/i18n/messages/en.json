@@ -13024,13 +13024,20 @@
           "creating": {
             "status": "Creating the canvas…"
           },
-          "generated": {
-            "status": "Canvas ready"
+          "edited": {
+            "status": "Edited a Canvas"
+          },
+          "searches": {
+            "count": "Performed {count, plural, one {# search} other {# searches}}"
           },
           "card": {
             "subtitle": "Text",
             "fallbackTitle": "Research canvas",
-            "openAction": "Open the canvas"
+            "expand": "Expand",
+            "foldAction": "Fold the canvas back into the chat",
+            "edit": "Edit",
+            "copy": "Copy",
+            "download": "Download"
           }
         }
       },
@@ -13648,20 +13655,54 @@
       "panel": {
         "ariaLabel": "Canvas panel",
         "fallbackTitle": "Research canvas",
-        "writing": "Writing the canvas…",
-        "ready": "Research document"
+        "writing": "Writing the canvas…"
       },
       "toolbar": {
-        "edit": "Edit",
-        "copy": "Copy",
-        "download": "Download",
-        "translate": "Translate",
-        "close": "Close",
-        "save": "Save",
-        "cancelEdit": "Cancel editing"
+        "finishingTouch": "Add the finishing touch",
+        "format": "Format",
+        "length": "Length",
+        "tone": "Tone",
+        "audience": "Audience",
+        "translate": "Translate"
       },
-      "translate": {
-        "error": "Translation failed. Try again."
+      "options": {
+        "format": {
+          "report": "Detailed report",
+          "brief": "Synthesis note",
+          "bullets": "Bullet list"
+        },
+        "length": {
+          "shorter": "Shorter",
+          "longer": "Longer"
+        },
+        "tone": {
+          "professional": "Professional",
+          "neutral": "Neutral",
+          "conversational": "Conversational"
+        },
+        "audience": {
+          "general": "General public",
+          "experts": "Experts",
+          "students": "Students"
+        },
+        "languages": {
+          "chinese": "Chinese",
+          "english": "English",
+          "french": "French",
+          "german": "German",
+          "greek": "Greek",
+          "russian": "Russian",
+          "spanish": "Spanish"
+        }
+      },
+      "actions": {
+        "translateInto": "Translate the text into {language}",
+        "finishingTouch": "Add the finishing touch to the text",
+        "formatAs": "Format the text as {option}",
+        "shorten": "Shorten the text",
+        "lengthen": "Expand the text",
+        "tone": "Adjust the text tone: {option}",
+        "audience": "Adapt the text for the audience: {option}"
       }
     }
   },
