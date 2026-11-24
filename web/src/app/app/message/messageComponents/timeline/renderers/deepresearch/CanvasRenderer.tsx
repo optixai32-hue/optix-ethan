@@ -1,9 +1,6 @@
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useMemo } from "react";
 import { useTranslations } from "next-intl";
-import { SvgDownload, SvgEdit } from "@opal/icons";
-import { Button, CopyButton } from "@opal/components";
 
-import MinimalMarkdown from "@/components/chat/MinimalMarkdown";
 import {
   Packet,
   PacketType,
@@ -12,35 +9,25 @@ import {
 } from "@/app/app/services/streamingModels";
 import {
   CANVAS_TASK_PREFIX,
-  canvasContentFromPackets,
   canvasSearchCount,
-  extractCanvasFromMessage,
 } from "@/app/app/services/canvasUtils";
 import {
   MessageRenderer,
   FullChatState,
   RenderType,
 } from "@/app/app/message/messageComponents/types";
-import { useCanvasStore } from "@/app/app/stores/useCanvasStore";
 import { useCurrentMessageTree } from "@/app/app/stores/useChatSessionStore";
 import { CanvasGlyphIcon } from "@/components/canvas/CanvasGlyphIcon";
-import {
-  CANVAS_DOCUMENT_COMPONENTS,
-  downloadCanvasDocument,
-} from "@/components/canvas/canvasDocument";
 import Text from "@/refresh-components/texts/Text";
 
 /**
- * CanvasRenderer — the Deep Search canvas step in the message timeline.
+ * CanvasRenderer — the Deep Search canvas STATUS ROW in the step pile.
  *
- * The canvas is a REAL step in the pile (like the Searching-the-web step):
- * the reference video's document card — header (glyph, title, Modifier /
- * Copier / download actions), a live scrollable document preview body, and
- * the centered "Agrandir" (expand) action.
- *
- * The card ALWAYS stays in the timeline — even while the split view is open
- * (the video keeps every canvas step in the pile; "Agrandir" opens the side
- * panel BESIDE the chat, it never folds the card away).
+ * The document card itself is NOT here: the reference video's card floats
+ * free in the message flow, outside the step pill — AgentMessage mounts it
+ * below the pile via `CanvasInlineCard`. This renderer only contributes the
+ * slim pile row ("Création du Canvas…" / "Modifié un Canvas · Effectué N
+ * recherches"), exactly like a "Searched the web" row.
  *
  * A content-filter restart splits the update across several canvas turns
  * (a fresh `research_agent_start` per attempt): only the LATEST attempt is
@@ -52,8 +39,6 @@ export const CanvasRenderer: MessageRenderer<
   FullChatState
 > = ({ packets, messageNodeId, stopPacketSeen, renderType, children }) => {
   const t = useTranslations("chat.messages.timeline");
-
-  const openCanvasPanel = useCanvasStore((s) => s.open);
 
   const messageTree = useCurrentMessageTree();
   // The owning assistant message: the timeline render path does not thread
@@ -120,143 +105,18 @@ export const CanvasRenderer: MessageRenderer<
     return laterStart !== undefined;
   }, [message, packets]);
 
-  const startPacket = packets.find(
-    (p) => p.obj.type === PacketType.RESEARCH_AGENT_START,
-  );
-  const title = startPacket
-    ? (startPacket.obj as ResearchAgentStart).research_task.slice(
-        CANVAS_TASK_PREFIX.length,
-      )
-    : "";
-  const content = useMemo(() => canvasContentFromPackets(packets), [packets]);
-
   const isComplete =
     packets.some((p) => p.obj.type === PacketType.SECTION_END) ||
     stopPacketSeen;
 
-  // The full canvas from the owning message — fresher than the card's grouped
-  // packets (pacing can lag the stream), so Agrandir always opens the panel
-  // with everything the message has already received.
-  const fullCanvas = useMemo(
-    () =>
-      message
-        ? extractCanvasFromMessage(
-            message,
-            !isComplete && !stopPacketSeen,
-          )
-        : null,
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- packets mutate in place; packetCount is the memo key (AgentMessage's memo does the same)
-    [message, packets, isComplete, stopPacketSeen],
-  );
-
-  const searchCount = message ? canvasSearchCount(message) : 0;
-
-  /** The canvas's owning message node id (the panel's expansion key). */
-  const ownerNodeId = message?.nodeId ?? messageNodeId ?? null;
-
-  // Status line (the pile row): the reference video's
+  // The pile row: the reference video's
   // "Modifié un Canvas · Effectué N recherches".
+  const searchCount = message ? canvasSearchCount(message) : 0;
   const statusText = isComplete
     ? searchCount > 0
       ? `${t("canvas.edited.status")} · ${t("canvas.searches.count", { count: searchCount })}`
       : t("canvas.edited.status")
     : t("canvas.creating.status");
-
-  const handleExpand = () => {
-    // Prefer the owning message's full canvas (correct nodeId + every delta
-    // received so far); fall back to the card's grouped view.
-    const data = fullCanvas ?? {
-      nodeId: ownerNodeId ?? -1,
-      title,
-      content,
-      isStreaming: !isComplete,
-    };
-    openCanvasPanel({
-      nodeId: data.nodeId,
-      title: title || data.title,
-      content: data.content || content,
-      isStreaming: data.isStreaming,
-    });
-  };
-
-  const previewScrollRef = useRef<HTMLDivElement>(null);
-  // Follow the live stream inside the card preview (pinned to the bottom).
-  useEffect(() => {
-    if (isComplete) return;
-    if (previewScrollRef.current) {
-      previewScrollRef.current.scrollTop =
-        previewScrollRef.current.scrollHeight;
-    }
-  }, [isComplete, content]);
-
-  // ---- The inline document card: header (glyph, title, actions), live
-  // document preview body, centered "Agrandir". ALWAYS rendered — the card
-  // stays in the timeline even while the split-view panel is open.
-  const documentCard = (
-    <div className="my-1 flex w-full flex-col rounded-12 border border-border-weak bg-background-tint-00 text-start">
-      {/* Card header — the video's icon + title + Modifier / Copier / download */}
-      <div className="flex items-center gap-2.5 border-b border-border-weak px-3 py-2.5">
-        <CanvasGlyphIcon className="h-5 w-5 shrink-0 text-text-02" />
-        <Text as="span" text03 className="min-w-0 flex-1 truncate">
-          {title || t("canvas.card.fallbackTitle")}
-        </Text>
-        <div className="flex shrink-0 items-center gap-0.5">
-          <Button
-            prominence="tertiary"
-            size="sm"
-            icon={SvgEdit}
-            tooltip={t("canvas.card.edit")}
-            onClick={handleExpand}
-          />
-          <CopyButton
-            prominence="tertiary"
-            size="sm"
-            getCopyText={() => content}
-            tooltip={t("canvas.card.copy")}
-          />
-          <Button
-            prominence="tertiary"
-            size="sm"
-            icon={SvgDownload}
-            tooltip={t("canvas.card.download")}
-            onClick={() => downloadCanvasDocument(title, content)}
-          />
-        </div>
-      </div>
-
-      {/* Card body — the live document preview */}
-      <div
-        ref={previewScrollRef}
-        className="max-h-72 min-h-16 overflow-y-auto px-4 py-3"
-      >
-        {content.trim() ? (
-          <MinimalMarkdown
-            content={content}
-            streaming={!isComplete}
-            components={CANVAS_DOCUMENT_COMPONENTS}
-          />
-        ) : (
-          <div className="flex items-center gap-2 py-6">
-            <Text as="p" text04 mainUiMuted>
-              {t("canvas.creating.status")}
-            </Text>
-          </div>
-        )}
-      </div>
-
-      {/* Card footer — the centered "Agrandir" action */}
-      <div className="flex justify-center border-t border-border-weak px-3 py-2">
-        <Button
-          prominence="secondary"
-          size="sm"
-          onClick={handleExpand}
-          aria-label={t("canvas.card.expand")}
-        >
-          {t("canvas.card.expand")}
-        </Button>
-      </div>
-    </div>
-  );
 
   // A superseded restart attempt renders NOTHING (its partial text was
   // discarded; the latest attempt is the message's real canvas).
@@ -265,26 +125,34 @@ export const CanvasRenderer: MessageRenderer<
   }
 
   if (renderType === RenderType.HIGHLIGHT) {
+    // Collapsed streaming view (the pile folded while the canvas writes):
+    // a single muted status line — the card streams below the pile via
+    // CanvasInlineCard, never inside this pill.
     return children([
       {
         icon: null,
         status: null,
         content: (
-          <div className="ps-(--timeline-common-text-padding)">{documentCard}</div>
+          <div className="ps-(--timeline-common-text-padding) pb-1">
+            <Text as="p" mainUiMuted text04>
+              {statusText}
+            </Text>
+          </div>
         ),
-        supportsCollapsible: true,
         timelineLayout: "content",
       },
     ]);
   }
 
+  // Expanded pile: a slim status-only row (icon + status text). content is
+  // null — no body, no collapse chrome; the document card lives outside the
+  // pile (CanvasInlineCard).
   return children([
     {
       icon: CanvasGlyphIcon,
       status: statusText,
-      content: documentCard,
-      noPaddingRight: true,
-      supportsCollapsible: true,
+      content: null,
+      supportsCollapsible: false,
       timelineLayout: "timeline",
     },
   ]);

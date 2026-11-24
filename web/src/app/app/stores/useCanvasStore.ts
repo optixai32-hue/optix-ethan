@@ -72,7 +72,6 @@ export const useCanvasStore = create<CanvasStore>()((set) => ({
   streamUpdate: (data) =>
     set((state) => {
       if (!state.visible) return {};
-      if (state.nodeId !== data.nodeId && !data.isStreaming) return {};
       // While an updated canvas is still being written (its first deltas have
       // not arrived yet), keep the current document on screen — the floating
       // "Writing the canvas…" badge signals the update in progress, and the
@@ -86,6 +85,10 @@ export const useCanvasStore = create<CanvasStore>()((set) => ({
         title: data.title,
         content,
         isStreaming: data.isStreaming,
+        // A completed canvas from a newer message IS the conversation's
+        // current document (the toolbar actions re-emit the canvas on every
+        // turn) — following it keeps the panel anchored on the newest
+        // version, which is what the next idle-watch targets.
         nodeId: data.nodeId,
       };
     }),

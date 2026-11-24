@@ -83,12 +83,24 @@ export function canvasContentFromPackets(packets: Packet[]): string {
     .join("");
 }
 
-/** True when the canvas group on this turn has been closed (section_end). */
+/** True when the canvas group on this turn has been closed (section_end).
+ * History replays carry no explicit section_end packet — the frontend
+ * injects one on turn transitions — so the presence of a LATER turn also
+ * marks this turn closed (the answer turn always follows the canvas turn). */
 function canvasTurnClosed(packets: Packet[], turn: number): boolean {
-  return packets.some(
-    (p) =>
-      p.placement.turn_index === turn && p.obj.type === PacketType.SECTION_END,
-  );
+  for (const p of packets) {
+    if (
+      p.obj.type === PacketType.SECTION_END &&
+      p.placement.turn_index === turn
+    ) {
+      return true;
+    }
+    const later = p.placement.turn_index;
+    if (later !== undefined && later !== null && later > turn) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -115,13 +127,14 @@ export function canvasSearchCount(message: Message): number {
  * the session's chatState for single-model streams) — the packet data alone
  * cannot tell whether the stream is still running.
  */
-export function extractCanvasFromMessage(
-  message: Message,
+export function extractCanvasFromPackets(
+  packets: Packet[],
+  nodeId: number,
   isGenerating: boolean,
 ): CanvasData | null {
-  // The message's CURRENT canvas = the last canvas start packet.
+  // The CURRENT canvas = the last canvas start packet.
   let startPacket: Packet | undefined;
-  for (const p of message.packets) {
+  for (const p of packets) {
     if (
       p.obj.type === PacketType.RESEARCH_AGENT_START &&
       isCanvasTask((p.obj as ResearchAgentStart).research_task)
@@ -134,7 +147,7 @@ export function extractCanvasFromMessage(
   const task = (startPacket.obj as ResearchAgentStart).research_task;
   const title = task.slice(CANVAS_TASK_PREFIX.length).trim();
   const turn = startPacket.placement.turn_index;
-  const content = message.packets
+  const content = packets
     .filter(
       (p) =>
         p.placement.turn_index === turn &&
@@ -144,7 +157,21 @@ export function extractCanvasFromMessage(
     )
     .map((p) => (p.obj as IntermediateReportDelta).content)
     .join("");
-  const isStreaming = isGenerating && !canvasTurnClosed(message.packets, turn);
+  const isStreaming = isGenerating && !canvasTurnClosed(packets, turn);
 
-  return { nodeId: message.nodeId, title, content, isStreaming };
+  return { nodeId, title, content, isStreaming };
+}
+
+/**
+ * Message-level wrapper around `extractCanvasFromPackets`.
+ */
+export function extractCanvasFromMessage(
+  message: Message,
+  isGenerating: boolean,
+): CanvasData | null {
+  return extractCanvasFromPackets(
+    message.packets,
+    message.nodeId,
+    isGenerating,
+  );
 }

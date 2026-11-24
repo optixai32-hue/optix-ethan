@@ -22,6 +22,7 @@ import { LlmDescriptor, LlmManager } from "@/lib/hooks";
 import { Message } from "@/app/app/interfaces";
 import Text from "@/refresh-components/texts/Text";
 import { AgentTimeline } from "@/app/app/message/messageComponents/timeline/AgentTimeline";
+import { CanvasInlineCard } from "@/app/app/message/messageComponents/timeline/renderers/deepresearch/CanvasInlineCard";
 import { useVoiceMode } from "@/providers/VoiceModeProvider";
 import { getTextContent } from "@/app/app/services/packetUtils";
 import { removeThinkingTokens } from "@/app/app/services/thinkingTokens";
@@ -296,6 +297,18 @@ const AgentMessage = React.memo(function AgentMessage({
         finalAnswerComing={pacedFinalAnswerComing}
         toolProcessingDuration={toolProcessingDuration}
       />
+
+      {/* Row 1.5: the Deep Search canvas document card — floating FREE in the
+          message flow, OUTSIDE the step pile (the reference video's card is
+          never wrapped in a step pill, and it stays visible even when the
+          pile collapses back into the "N steps" header). */}
+      <div className={cn(!fullWidthChat && "px-3")}>
+        <CanvasInlineCard
+          packets={rawPackets}
+          nodeId={nodeId}
+          stopPacketSeen={stopPacketSeen}
+        />
+      </div>
 
       {/* Row 2: Display content + MessageToolbar */}
       <div

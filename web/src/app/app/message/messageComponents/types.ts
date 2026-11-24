@@ -41,7 +41,9 @@ export interface FullChatState {
 export interface RendererResult {
   icon: IconFunctionComponent | null;
   status: string | JSX.Element | null;
-  content: JSX.Element;
+  /** The step's body — null for status-only rows (e.g. the canvas step,
+   * whose document card floats outside the step pile). */
+  content: JSX.Element | null;
 
   // can be used to override the look on the "expanded" view
   // used for things that should just show text w/o an icon or header

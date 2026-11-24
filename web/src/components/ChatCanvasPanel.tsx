@@ -75,9 +75,16 @@ export function ChatCanvasPanel() {
   const currentSessionId = useChatSessionStore((s) => s.currentSessionId);
   const chatState = useCurrentChatState();
   const messageTree = useCurrentMessageTree();
+  // The canvas the panel is currently showing (the card's Agrandir sets it).
+  const displayedNodeId = useCanvasStore((s) => s.nodeId);
 
-  // ---- Stream watcher: follow the latest message's canvas while the panel
-  // is open (the canvas action messages stream their updated canvas here).
+  // ---- Stream watcher: follow the canvas while the panel is open.
+  // While the session generates, the NEWEST message's canvas is the live
+  // target — the panel toolbar's actions (Traduire, Format, …) submit pill
+  // messages and their updated canvas streams into the newest assistant
+  // message. When idle, the target is the message the panel is actually
+  // showing (displayedNodeId): Agrandir on an earlier card must show THAT
+  // document, not the conversation's newest one.
   const latestMessage = useMemo(() => {
     if (!messageTree) return null;
     const chain = getLatestMessageChain(messageTree);
@@ -93,19 +100,24 @@ export function ChatCanvasPanel() {
     chatState === "loading" ||
     chatState === "toolBuilding";
 
-  const canvas = useMemo(
-    () =>
-      latestMessage
-        ? extractCanvasFromMessage(latestMessage, sessionGenerating)
-        : null,
+  const canvas = useMemo(() => {
+    if (!messageTree) return null;
+    const target =
+      sessionGenerating && latestMessage
+        ? latestMessage
+        : (displayedNodeId != null
+            ? messageTree.get(displayedNodeId)
+            : undefined) ?? latestMessage;
+    return target ? extractCanvasFromMessage(target, sessionGenerating) : null;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
-    [
-      latestMessage?.nodeId,
-      latestMessage?.packetCount,
-      latestMessage?.is_generating,
-      sessionGenerating,
-    ],
-  );
+  }, [
+    messageTree,
+    displayedNodeId,
+    latestMessage?.nodeId,
+    latestMessage?.packetCount,
+    latestMessage?.is_generating,
+    sessionGenerating,
+  ]);
 
   // Live refresh while the panel is open (the card's "Agrandir" opens it;
   // there is no auto-open — the video always opens through Agrandir).
