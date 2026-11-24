@@ -523,8 +523,10 @@ export async function processMessage(
                 });
               }
 
-              // The brief answer streams AFTER the canvas step (turn 2).
-              streamCanvasActionAnswer(emitter, action.answerText, 2);
+              // The brief answer streams AFTER the canvas's FINAL step — the
+              // turn is dynamic (a content-filter restart bumps the canvas
+              // turn, and the answer must follow the last canvas group).
+              streamCanvasActionAnswer(emitter, action.answerText, action.answerTurn);
 
               // Persist the response + raw packet list so a reloaded session
               // replays the exact timeline (Thinking -> Canvas -> answer).

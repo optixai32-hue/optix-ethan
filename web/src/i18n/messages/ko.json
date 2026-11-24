@@ -13657,6 +13657,9 @@
         "fallbackTitle": "리서치 캔버스",
         "writing": "캔버스 작성 중…"
       },
+      "header": {
+        "timeline": "타임라인"
+      },
       "toolbar": {
         "finishingTouch": "마감 손질 추가",
         "format": "형식",

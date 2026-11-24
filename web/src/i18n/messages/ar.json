@@ -13657,6 +13657,9 @@
         "fallbackTitle": "لوحة بحثية",
         "writing": "جارٍ كتابة اللوحة…"
       },
+      "header": {
+        "timeline": "الجدول الزمني"
+      },
       "toolbar": {
         "finishingTouch": "إضافة اللمسة الأخيرة",
         "format": "التنسيق",

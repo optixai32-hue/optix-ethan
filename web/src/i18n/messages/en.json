@@ -13657,6 +13657,9 @@
         "fallbackTitle": "Research canvas",
         "writing": "Writing the canvas…"
       },
+      "header": {
+        "timeline": "Timeline"
+      },
       "toolbar": {
         "finishingTouch": "Add the finishing touch",
         "format": "Format",

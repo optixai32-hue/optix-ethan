@@ -13657,6 +13657,9 @@
         "fallbackTitle": "研究画布",
         "writing": "正在撰写画布…"
       },
+      "header": {
+        "timeline": "时间线"
+      },
       "toolbar": {
         "finishingTouch": "添加点睛之笔",
         "format": "格式",

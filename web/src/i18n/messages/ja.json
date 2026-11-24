@@ -13657,6 +13657,9 @@
         "fallbackTitle": "リサーチキャンバス",
         "writing": "キャンバスを書き込み中…"
       },
+      "header": {
+        "timeline": "タイムライン"
+      },
       "toolbar": {
         "finishingTouch": "仕上げを追加",
         "format": "フォーマット",

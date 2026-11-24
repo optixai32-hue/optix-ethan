@@ -5,6 +5,7 @@ import { Button, CopyButton } from "@opal/components";
 
 import MinimalMarkdown from "@/components/chat/MinimalMarkdown";
 import {
+  Packet,
   PacketType,
   ResearchAgentPacket,
   ResearchAgentStart,
@@ -37,10 +38,14 @@ import Text from "@/refresh-components/texts/Text";
  * Copier / download actions), a live scrollable document preview body, and
  * the centered "Agrandir" (expand) action.
  *
- * "Agrandir" opens the split view: the side panel (ChatCanvasPanel) shows the
- * full document and THIS step collapses into the compact pill with the
- * orange border (glyph + title + "Texte"); clicking the pill folds the panel
- * back into the inline card.
+ * The card ALWAYS stays in the timeline — even while the split view is open
+ * (the video keeps every canvas step in the pile; "Agrandir" opens the side
+ * panel BESIDE the chat, it never folds the card away).
+ *
+ * A content-filter restart splits the update across several canvas turns
+ * (a fresh `research_agent_start` per attempt): only the LATEST attempt is
+ * the message's real canvas — every earlier attempt is superseded and
+ * renders nothing (its partial text was discarded by the backend).
  */
 export const CanvasRenderer: MessageRenderer<
   ResearchAgentPacket,
@@ -48,9 +53,7 @@ export const CanvasRenderer: MessageRenderer<
 > = ({ packets, messageNodeId, stopPacketSeen, renderType, children }) => {
   const t = useTranslations("chat.messages.timeline");
 
-  const expandedNodeId = useCanvasStore((s) => s.expandedNodeId);
   const openCanvasPanel = useCanvasStore((s) => s.open);
-  const closeCanvasPanel = useCanvasStore((s) => s.close);
 
   const messageTree = useCurrentMessageTree();
   // The owning assistant message: the timeline render path does not thread
@@ -90,6 +93,33 @@ export const CanvasRenderer: MessageRenderer<
     return undefined;
   }, [messageTree, messageNodeId, packets]);
 
+  // Superseded attempt: the message carries a LATER canvas start (a
+  // content-filter restart bumped the canvas turn) — this group's partial
+  // text was discarded by the backend, so it renders nothing at all.
+  const superseded = useMemo(() => {
+    if (!message) return false;
+    const start = packets.find(
+      (p) => p.obj.type === PacketType.RESEARCH_AGENT_START,
+    );
+    if (!start) return false;
+    const thisTurn = start.placement.turn_index;
+    if (thisTurn === undefined) return false;
+    let laterStart: Packet | undefined;
+    for (const p of message.packets) {
+      if (
+        p.obj.type === PacketType.RESEARCH_AGENT_START &&
+        (p.obj as ResearchAgentStart).research_task ===
+          (start.obj as ResearchAgentStart).research_task &&
+        p.placement.turn_index !== undefined &&
+        p.placement.turn_index > thisTurn
+      ) {
+        laterStart = p;
+        break;
+      }
+    }
+    return laterStart !== undefined;
+  }, [message, packets]);
+
   const startPacket = packets.find(
     (p) => p.obj.type === PacketType.RESEARCH_AGENT_START,
   );
@@ -124,8 +154,6 @@ export const CanvasRenderer: MessageRenderer<
   /** The canvas's owning message node id (the panel's expansion key). */
   const ownerNodeId = message?.nodeId ?? messageNodeId ?? null;
 
-  const isExpanded = ownerNodeId != null && expandedNodeId === ownerNodeId;
-
   // Status line (the pile row): the reference video's
   // "Modifié un Canvas · Effectué N recherches".
   const statusText = isComplete
@@ -151,10 +179,6 @@ export const CanvasRenderer: MessageRenderer<
     });
   };
 
-  const handleCollapse = () => {
-    closeCanvasPanel();
-  };
-
   const previewScrollRef = useRef<HTMLDivElement>(null);
   // Follow the live stream inside the card preview (pinned to the bottom).
   useEffect(() => {
@@ -165,39 +189,9 @@ export const CanvasRenderer: MessageRenderer<
     }
   }, [isComplete, content]);
 
-  // ---- The collapsed pill (split view open): glyph + title + "Texte" with
-  // the orange border, exactly the reference video's compact state. Clicking
-  // it folds the panel back into the inline card.
-  const collapsedPill = (
-    <div
-      role="button"
-      tabIndex={0}
-      aria-label={t("canvas.card.foldAction")}
-      onClick={handleCollapse}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          handleCollapse();
-        }
-      }}
-      className="group my-1 flex w-full cursor-pointer items-center gap-3 rounded-12 border border-theme-orange-04 bg-background-tint-00 px-3 py-2.5 text-start transition-colors hover:bg-action-selection-02 focus-visible:outline-2 focus-visible:outline-offset-2"
-    >
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-8 border border-border-weak bg-background-tint-01">
-        <CanvasGlyphIcon className="h-4.5 w-4.5 text-text-03" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <Text as="span" text03 className="block truncate">
-          {title || t("canvas.card.fallbackTitle")}
-        </Text>
-        <Text as="span" text04 mainUiMuted className="block truncate text-xs">
-          {t("canvas.card.subtitle")}
-        </Text>
-      </div>
-    </div>
-  );
-
   // ---- The inline document card: header (glyph, title, actions), live
-  // document preview body, centered "Agrandir".
+  // document preview body, centered "Agrandir". ALWAYS rendered — the card
+  // stays in the timeline even while the split-view panel is open.
   const documentCard = (
     <div className="my-1 flex w-full flex-col rounded-12 border border-border-weak bg-background-tint-00 text-start">
       {/* Card header — the video's icon + title + Modifier / Copier / download */}
@@ -264,7 +258,11 @@ export const CanvasRenderer: MessageRenderer<
     </div>
   );
 
-  const stepContent = isExpanded ? collapsedPill : documentCard;
+  // A superseded restart attempt renders NOTHING (its partial text was
+  // discarded; the latest attempt is the message's real canvas).
+  if (superseded) {
+    return children([]);
+  }
 
   if (renderType === RenderType.HIGHLIGHT) {
     return children([
@@ -272,7 +270,7 @@ export const CanvasRenderer: MessageRenderer<
         icon: null,
         status: null,
         content: (
-          <div className="ps-(--timeline-common-text-padding)">{stepContent}</div>
+          <div className="ps-(--timeline-common-text-padding)">{documentCard}</div>
         ),
         supportsCollapsible: true,
         timelineLayout: "content",
@@ -284,7 +282,7 @@ export const CanvasRenderer: MessageRenderer<
     {
       icon: CanvasGlyphIcon,
       status: statusText,
-      content: stepContent,
+      content: documentCard,
       noPaddingRight: true,
       supportsCollapsible: true,
       timelineLayout: "timeline",

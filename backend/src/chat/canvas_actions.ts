@@ -8,11 +8,20 @@
  * message routes here instead of the normal agent loop:
  *
  *   1. a brief Thinking step (the bot "réfléchit")
- *   2. a NEW canvas timeline step — the updated document streams live into
- *      the open split-view panel (a real step in the pile, like the original
- *      canvas step)
+ *   2. a NEW canvas timeline step — the updated document streams LIVE into
+ *      the step (and the open split-view panel): every provider delta is
+ *      emitted the moment it arrives, exactly like the Deep Search canvas
+ *      phase (deep_research.ts runCanvasPhase)
  *   3. the artifact row is updated (the canvas persists with the session)
  *   4. a brief answer streams in the chat (the bot "répond")
+ *
+ * Truncation safety (the upstream content filter cuts some generations
+ * mid-flight, `finish_reason: "sensitive"`): a cut attempt is NOT left on
+ * screen — the canvas RESTARTS on the next timeline turn (a fresh
+ * `research_agent_start` group; the frontend hides the superseded attempt),
+ * the validated prefix is resent, and the failing chunk is regenerated (then,
+ * if still cut, written in its original text). The turn counter is therefore
+ * dynamic: `answerTurn` tells the caller where the chat answer goes.
  *
  * Translate actions use the translation prompt (markdown structure
  * preserved exactly); every other action is a refinement of the document.
@@ -125,48 +134,6 @@ export function splitMarkdownSections(markdown: string): string[] {
   return sections.filter((s) => s.trim().length > 0);
 }
 
-/**
- * Translate/refine ONE chunk through the provider, WITHOUT emitting deltas —
- * the caller streams the accepted text itself so a content-filter truncation
- * (the upstream `finish_reason: "sensitive"` fired on some CJK outputs,
- * cutting mid-document) never reaches the canvas: the chunk is retried, and
- * falls back to its original text, before anything is emitted.
- */
-async function runChunk(
-  provider: LLMProvider,
-  messages: LLMMessage[],
-  opts: {
-    signal?: AbortSignal;
-    maxTokens: number;
-  },
-): Promise<{ text: string; filtered: boolean }> {
-  let text = "";
-  let filtered = false;
-  try {
-    for await (const event of provider.stream(messages, {
-      signal: opts.signal,
-      maxTokens: opts.maxTokens,
-    })) {
-      if (event.delta) text += event.delta;
-      if (
-        event.finish_reason &&
-        event.finish_reason !== "stop" &&
-        event.finish_reason !== "tool_calls"
-      ) {
-        // "sensitive" / "length" / … — the upstream cut the generation.
-        filtered = true;
-      }
-      if (event.done || event.finish_reason === "stop") break;
-    }
-  } catch (err) {
-    logger.warning("canvas action chunk generation failed", {
-      error: String(err),
-    });
-    return { text: "", filtered: true };
-  }
-  return { text, filtered };
-}
-
 /** True when a translated chunk is suspiciously short for its input. */
 function translationLooksTruncated(
   input: string,
@@ -178,9 +145,9 @@ function translationLooksTruncated(
 }
 
 /**
- * Emit finalized text into the canvas step as small deltas — the document
- * visibly writes line by line instead of landing as one block (the reference
- * video's progressive canvas). Line-boundary chunks keep markdown intact.
+ * Emit finalized text into the canvas step as small deltas — used for
+ * wholesale writes (the restart resend of the validated prefix, and fallback
+ * originals): line-boundary chunks keep markdown intact and visibly write.
  */
 function emitChunked(emitter: StreamEmitter, turn: number, text: string): void {
   if (!text) return;
@@ -188,6 +155,121 @@ function emitChunked(emitter: StreamEmitter, turn: number, text: string): void {
   for (let i = 0; i < lines.length; i++) {
     emitter.send("intermediate_report_delta", turn, i === 0 ? lines[i] : `\n${lines[i]}`);
   }
+}
+
+/**
+ * CanvasStream — the live canvas step writer.
+ *
+ * Owns the canvas turn counter. `write` emits every delta the MOMENT it
+ * arrives (the visible progressive writing). When a generation is cut
+ * (`finish_reason: sensitive` / suspiciously short), `restart()` bumps the
+ * turn, reopens a fresh canvas group and resends the validated prefix — the
+ * superseded attempt (its own timeline turn) is hidden by the frontend, so
+ * the user only ever sees complete-looking attempts that grow monotonically.
+ */
+class CanvasStream {
+  /** Validated text — survives restarts (resent on the new turn). */
+  private committed = "";
+  private _turn: number;
+
+  constructor(
+    private readonly emitter: StreamEmitter,
+    startTurn: number,
+    private readonly title: string,
+  ) {
+    this._turn = startTurn;
+  }
+
+  /** The CURRENT canvas turn (bumps on restart). */
+  get turn(): number {
+    return this._turn;
+  }
+
+  /** The validated document so far (what a restart resends). */
+  get text(): string {
+    return this.committed;
+  }
+
+  /** Open the canvas group on the current turn (start packets). */
+  open(): void {
+    this.emitter.sendObject("research_agent_start", this._turn, {
+      research_task: `Canvas : ${this.title}`,
+    });
+    this.emitter.sendObject("intermediate_report_start", this._turn, {});
+  }
+
+  /** Live delta — emitted the moment it arrives (progressive writing). */
+  write(delta: string): void {
+    if (!delta) return;
+    this.emitter.send("intermediate_report_delta", this._turn, delta);
+  }
+
+  /** Wholesale write of finalized text (fallback originals, separators). */
+  writeFinal(text: string): void {
+    if (!text) return;
+    emitChunked(this.emitter, this._turn, text);
+  }
+
+  /** Validate-and-keep: `text` is now part of the committed document. */
+  keep(text: string): void {
+    this.committed += text;
+  }
+
+  /**
+   * Abandon the current attempt: new turn, fresh canvas group, the
+   * validated prefix resent so the new attempt starts complete.
+   */
+  restart(): void {
+    this._turn += 1;
+    this.open();
+    emitChunked(this.emitter, this._turn, this.committed);
+  }
+}
+
+/**
+ * Generate one chunk through the provider, streaming every delta LIVE into
+ * the canvas (`stream.write`) the moment it arrives. Returns the full text
+ * and whether the generation ended cleanly (`finish_reason: stop` — a
+ * content-filter cut reports `clean: false`, never emitting more of the
+ * aborted text afterwards: the caller restarts).
+ */
+async function streamChunkLive(
+  provider: LLMProvider,
+  messages: LLMMessage[],
+  stream: CanvasStream,
+  opts: {
+    signal?: AbortSignal;
+    maxTokens: number;
+  },
+): Promise<{ text: string; clean: boolean }> {
+  let text = "";
+  let clean = true;
+  try {
+    for await (const event of provider.stream(messages, {
+      signal: opts.signal,
+      maxTokens: opts.maxTokens,
+    })) {
+      if (event.delta) {
+        text += event.delta;
+        stream.write(event.delta);
+      }
+      if (
+        event.finish_reason &&
+        event.finish_reason !== "stop" &&
+        event.finish_reason !== "tool_calls"
+      ) {
+        // "sensitive" / "length" / … — the upstream cut the generation.
+        clean = false;
+      }
+      if (event.done || event.finish_reason === "stop") break;
+    }
+  } catch (err) {
+    logger.warning("canvas action chunk generation failed", {
+      error: String(err),
+    });
+    return { text, clean: false };
+  }
+  return { text, clean };
 }
 
 /** The reasoning line shown in the Thinking step (action-localized). */
@@ -241,27 +323,32 @@ export interface CanvasActionResult {
   answerText: string;
   /** Sections that kept their original text (upstream content filter). */
   untranslatedSections: number;
+  /**
+   * Timeline turn the caller streams the answer on — after the canvas's
+   * FINAL turn (restarts bump the canvas turn, so this is dynamic).
+   */
+  answerTurn: number;
 }
 
 /**
- * Translate the artifact section by section — the only reliable way past the
- * upstream content filter, which truncates some whole-document CJK
- * translations mid-flight (`finish_reason: "sensitive"`): each section is
- * translated on its own, integrity-checked (a CJK target naturally compresses
- * to ~30% of the source's characters), retried once, and — when the filter
- * still cuts it — kept in the document's original language so the canvas
- * NEVER ends up truncated. Accepted sections stream into the canvas as they
- * finalize, so the panel still writes progressively.
+ * Translate the artifact section by section, LIVE: each section's deltas
+ * stream the moment they arrive. The upstream content filter truncates some
+ * whole-document CJK translations mid-flight (`finish_reason: "sensitive"`);
+ * each section is translated on its own and integrity-checked (a CJK target
+ * naturally compresses to ~30% of the source's characters). A cut section
+ * RESTARTS the canvas on the next turn (validated prefix resent, superseded
+ * attempt hidden by the frontend) and is retried once; when the filter
+ * still cuts it, the section is kept in the document's original language —
+ * also on a fresh turn — so the canvas NEVER ends up truncated.
  */
 async function translateDocumentSectioned(opts: {
   provider: LLMProvider;
-  emitter: StreamEmitter;
-  turn: number;
+  stream: CanvasStream;
   artifact: { title: string; content: string };
   translateLanguage: string;
   signal?: AbortSignal;
 }): Promise<{ content: string; untranslated: number }> {
-  const { provider, emitter, turn, artifact, translateLanguage, signal } = opts;
+  const { provider, stream, artifact, translateLanguage, signal } = opts;
   const cjkTarget = isCjkTarget(translateLanguage);
   const sections = splitMarkdownSections(artifact.content);
   const out: string[] = [];
@@ -276,44 +363,53 @@ async function translateDocumentSectioned(opts: {
       },
     ];
 
-    let best = await runChunk(provider, messages, { signal, maxTokens: 8000 });
-    if (
-      best.filtered ||
-      translationLooksTruncated(section, best.text, cjkTarget)
-    ) {
-      logger.warning("canvas translation section truncated; retrying once", {
-        section: section.slice(0, 60),
-        finish_filtered: best.filtered,
-      });
-      const retry = await runChunk(provider, messages, {
-        signal,
-        maxTokens: 8000,
-      });
-      if (retry.text.length > best.text.length) best = retry;
+    // Attempt 1 — the section streams live into the current canvas turn.
+    let best = await streamChunkLive(provider, messages, stream, {
+      signal,
+      maxTokens: 8000,
+    });
+    if (best.clean && !translationLooksTruncated(section, best.text, cjkTarget)) {
+      const accepted = best.text.trimEnd();
+      stream.write("\n\n");
+      stream.keep(accepted + "\n\n");
+      out.push(accepted);
+      continue;
     }
 
-    let accepted: string;
-    if (
-      best.filtered ||
-      translationLooksTruncated(section, best.text, cjkTarget)
-    ) {
-      // The filter cut this section twice — keep the original text: a
-      // complete document with one section in its original language beats
-      // a truncated translation.
-      accepted = section;
-      untranslated += 1;
-    } else {
-      accepted = best.text.trimEnd();
+    // Cut mid-section — restart on a fresh turn (prefix resent, aborted
+    // attempt hidden) and retry the section once.
+    logger.warning("canvas translation section truncated; restarting turn", {
+      section: section.slice(0, 60),
+      finish_clean: best.clean,
+    });
+    stream.restart();
+    best = await streamChunkLive(provider, messages, stream, {
+      signal,
+      maxTokens: 8000,
+    });
+    if (best.clean && !translationLooksTruncated(section, best.text, cjkTarget)) {
+      const accepted = best.text.trimEnd();
+      stream.write("\n\n");
+      stream.keep(accepted + "\n\n");
+      out.push(accepted);
+      continue;
     }
 
-    out.push(accepted);
-    // Stream the accepted section into the canvas (chunked so it visibly
-    // writes; the separator keeps the markdown structure).
-    emitChunked(emitter, turn, accepted);
-    emitChunked(emitter, turn, "\n\n");
+    // The filter cut this section twice — keep the original text (a fresh
+    // turn again): a complete document with one section in its original
+    // language beats a truncated translation.
+    logger.warning("canvas translation section cut twice; keeping original", {
+      section: section.slice(0, 60),
+    });
+    stream.restart();
+    stream.writeFinal(section);
+    stream.write("\n\n");
+    stream.keep(section + "\n\n");
+    out.push(section);
+    untranslated += 1;
   }
 
-  return { content: out.join("\n\n").trimEnd(), untranslated };
+  return { content: stream.text.trimEnd(), untranslated };
 }
 
 /**
@@ -321,8 +417,9 @@ async function translateDocumentSectioned(opts: {
  * timeline step (research_agent_start "Canvas : {title}" group, exactly like
  * the Deep Search canvas phase) and return the texts the caller persists.
  *
- * Packet timeline (turns): reasoning on `startTurn`, the canvas step on
- * `startTurn + 1`; the caller streams the answer on `startTurn + 2`.
+ * Packet timeline (turns): reasoning on `startTurn`; the canvas step(s) on
+ * `startTurn + 1` (one MORE turn per content-filter restart); the caller
+ * streams the answer on `answerTurn` (after the canvas's final turn).
  */
 export async function runCanvasAction(opts: {
   provider: LLMProvider;
@@ -346,28 +443,23 @@ export async function runCanvasAction(opts: {
   emitter.send("reasoning_delta", startTurn, reasoning);
   emitter.sendObject("reasoning_done", startTurn, {});
 
-  // ---- 2. The canvas step opens (a REAL step in the pile).
-  const canvasTurn = startTurn + 1;
-  emitter.sendObject("research_agent_start", canvasTurn, {
-    research_task: `Canvas : ${artifact.title}`,
-  });
-  emitter.sendObject("intermediate_report_start", canvasTurn, {});
+  // ---- 2. The canvas step opens (a REAL step in the pile) — the stream
+  // owns the canvas turn from here (restarts bump it).
+  const stream = new CanvasStream(emitter, startTurn + 1, artifact.title);
+  stream.open();
 
-  // ---- 3. The updated document streams live into the step (and the open
-  // split-view panel, which follows the streaming canvas). Translations run
-  // section by section — each section streams into the canvas the moment it
-  // is finalized (progressive writing), the upstream content filter cannot
-  // truncate the document (a filtered section is retried, then kept in the
-  // original language), and no partial text is ever emitted before its
-  // section is validated. Other refinements regenerate the whole document
-  // with one integrity retry.
+  // ---- 3. The updated document streams LIVE into the step (and the open
+  // split-view panel, which follows the streaming canvas): every delta is
+  // emitted the moment it arrives. Translations run section by section; a
+  // content-filter cut restarts the canvas on a fresh turn (validated prefix
+  // resent, superseded attempt hidden) and retries the chunk. Other
+  // refinements regenerate the whole document with one restart-retry.
   let updatedContent = "";
   let untranslatedSections = 0;
   if (translateLanguage) {
     const result = await translateDocumentSectioned({
       provider,
-      emitter,
-      turn: canvasTurn,
+      stream,
       artifact,
       translateLanguage,
       signal: opts.signal,
@@ -382,36 +474,45 @@ export async function runCanvasAction(opts: {
         content: `Requested change: ${instruction}\n\nCurrent document:\n\n${artifact.content}`,
       },
     ];
-    let best = await runChunk(provider, refineMessages, {
+    // Attempt 1 — the whole updated document streams live.
+    let best = await streamChunkLive(provider, refineMessages, stream, {
       signal: opts.signal,
       maxTokens: 8000,
     });
-    if (best.filtered || best.text.length < artifact.content.length * 0.35) {
-      const retry = await runChunk(provider, refineMessages, {
+    if (best.clean && best.text.trim().length >= artifact.content.length * 0.35) {
+      updatedContent = best.text.trim();
+      stream.keep(updatedContent);
+    } else {
+      // Cut — restart on a fresh turn (prefix resent) and retry once.
+      logger.warning("canvas refinement truncated; restarting turn", {
+        instruction,
+        finish_clean: best.clean,
+      });
+      stream.restart();
+      best = await streamChunkLive(provider, refineMessages, stream, {
         signal: opts.signal,
         maxTokens: 8000,
       });
-      if (retry.text.length > best.text.length) best = retry;
-    }
-    if (best.filtered || best.text.length < artifact.content.length * 0.35) {
-      // Degraded path: keep the document unchanged (the step still closes).
-      updatedContent = artifact.content;
-      untranslatedSections = 1;
-      emitChunked(emitter, canvasTurn, updatedContent);
-      emitChunked(
-        emitter,
-        canvasTurn,
-        "\n\n_(the update could not be completed — the document is unchanged)_",
-      );
-    } else {
-      updatedContent = best.text.trim();
-      emitChunked(emitter, canvasTurn, updatedContent);
+      if (best.clean && best.text.trim().length >= artifact.content.length * 0.35) {
+        updatedContent = best.text.trim();
+        stream.keep(updatedContent);
+      } else {
+        // Degraded path: keep the document unchanged (the step still
+        // closes) — restart and write the original content back.
+        stream.restart();
+        stream.writeFinal(artifact.content);
+        stream.writeFinal(
+          "\n\n_(the update could not be completed — the document is unchanged)_",
+        );
+        updatedContent = artifact.content;
+        untranslatedSections = 1;
+      }
     }
   }
 
   // ---- 4. The canvas step's cited docs (unchanged set — none carried by
   // the artifact; the original canvas step keeps its own).
-  emitter.sendObject("intermediate_report_cited_docs", canvasTurn, {
+  emitter.sendObject("intermediate_report_cited_docs", stream.turn, {
     cited_docs: [],
   });
 
@@ -419,6 +520,7 @@ export async function runCanvasAction(opts: {
     updatedContent,
     answerText: answerText(instruction, translateLanguage, untranslatedSections),
     untranslatedSections,
+    answerTurn: stream.turn + 1,
   };
 }
 

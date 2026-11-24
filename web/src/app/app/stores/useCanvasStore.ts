@@ -14,8 +14,9 @@ export interface CanvasPendingAction {
  *
  * Driven by three sources:
  *  - the canvas card in the message timeline: "Agrandir" expands the card's
- *    document into the side panel (and the card collapses to the compact
- *    pill); clicking the pill again folds the panel back into the card
+ *    document into the side panel — the card ITSELF stays in the timeline
+ *    (the reference video keeps every canvas step visible in the pile; only
+ *    the panel opens beside the chat)
  *  - the stream watcher inside ChatCanvasPanel: while the panel is open it
  *    follows the live document (canvas updates included)
  *  - the panel toolbar: refinement/translate actions enqueue pill messages
@@ -29,18 +30,12 @@ interface CanvasStore {
   isStreaming: boolean;
   /** Assistant message (tree node id) whose canvas is displayed. */
   nodeId: number | null;
-  /**
-   * Message whose canvas is expanded in the split view — the timeline card
-   * renders as the compact pill while this is set (the reference video's
-   * collapsed state).
-   */
-  expandedNodeId: number | null;
   /** A toolbar action waiting for the chat bridge. */
   pendingAction: CanvasPendingAction | null;
 
   /** Expand the card's canvas into the side panel. */
   open: (data: CanvasData) => void;
-  /** Fold the panel back into the timeline card (user action only). */
+  /** Fold the panel — the timeline card stays where it is (user action only). */
   close: () => void;
   /** Live stream refresh — while the panel shows that canvas, and any
    * newly-streaming canvas while the panel stays open. */
@@ -61,7 +56,6 @@ export const useCanvasStore = create<CanvasStore>()((set) => ({
   content: "",
   isStreaming: false,
   nodeId: null,
-  expandedNodeId: null,
   pendingAction: null,
 
   open: (data) =>
@@ -71,11 +65,9 @@ export const useCanvasStore = create<CanvasStore>()((set) => ({
       content: data.content,
       isStreaming: data.isStreaming,
       nodeId: data.nodeId,
-      expandedNodeId: data.nodeId,
     }),
 
-  close: () =>
-    set((state) => ({ visible: false, expandedNodeId: null, nodeId: state.nodeId })),
+  close: () => set({ visible: false }),
 
   streamUpdate: (data) =>
     set((state) => {
@@ -95,7 +87,6 @@ export const useCanvasStore = create<CanvasStore>()((set) => ({
         content,
         isStreaming: data.isStreaming,
         nodeId: data.nodeId,
-        expandedNodeId: data.nodeId,
       };
     }),
 
@@ -118,7 +109,6 @@ export const useCanvasStore = create<CanvasStore>()((set) => ({
       content: "",
       isStreaming: false,
       nodeId: null,
-      expandedNodeId: null,
       pendingAction: null,
     }),
 }));

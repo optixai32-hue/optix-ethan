@@ -13657,6 +13657,9 @@
         "fallbackTitle": "Canvas de recherche",
         "writing": "Rédaction du Canvas…"
       },
+      "header": {
+        "timeline": "Timeline"
+      },
       "toolbar": {
         "finishingTouch": "Ajouter la touche finale",
         "format": "Format",

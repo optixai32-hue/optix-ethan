@@ -10,12 +10,14 @@ import {
   PopoverMenu,
 } from "@opal/components";
 import {
+  SvgArrowLeft,
   SvgArrowUpDown,
   SvgBubbleText,
   SvgGlobe,
   SvgListTree,
   SvgSparkle,
   SvgUsers,
+  SvgX,
 } from "@opal/icons";
 
 import MinimalMarkdown from "@/components/chat/MinimalMarkdown";
@@ -54,11 +56,13 @@ interface ToolbarOption {
  * streams back into the panel.
  *
  * The panel renders NOTHING unless a canvas is expanded: the original
- * layout is untouched when closed. Folding happens through the collapsed
- * pill in the chat (or Escape).
+ * layout is untouched when closed. Folding happens through the panel
+ * header — the "Timeline" back action and the SvgX close button — or
+ * Escape; the canvas card itself always stays in the message timeline.
  */
 export function ChatCanvasPanel() {
   const t = useTranslations("chat.canvasPanel");
+  const tTimeline = useTranslations("chat.messages.timeline");
 
   const visible = useCanvasStore((s) => s.visible);
   const title = useCanvasStore((s) => s.title);
@@ -258,8 +262,31 @@ export function ChatCanvasPanel() {
       aria-label={t("panel.ariaLabel")}
       className="fixed inset-0 z-50 md:relative md:inset-auto md:z-auto flex h-full w-full md:w-1/2 min-w-0 flex-col border-s border-border-weak bg-background overflow-hidden shadow-2xl md:shadow-none"
     >
+      {/* Panel header — the reference video's split view: the "Timeline"
+          back action folds the panel (the canvas card stays in the chat's
+          timeline), the SvgX button closes it the same way. */}
+      <div className="flex shrink-0 items-center justify-between border-b border-border-weak px-4 py-2">
+        <button
+          type="button"
+          onClick={close}
+          aria-label={t("header.timeline")}
+          className="flex items-center gap-1.5 rounded-8 px-1.5 py-1 text-sm text-text-03 transition-colors hover:bg-action-selection-02 hover:text-text-01 focus-visible:outline-2 focus-visible:outline-offset-2"
+        >
+          <SvgArrowLeft className="h-4 w-4" />
+          {t("header.timeline")}
+        </button>
+        <Button
+          prominence="tertiary"
+          size="sm"
+          icon={SvgX}
+          tooltip={tTimeline("canvas.card.foldAction")}
+          aria-label={tTimeline("canvas.card.foldAction")}
+          onClick={close}
+        />
+      </div>
+
       {/* Document body — the full canvas streams/renders here (the video's
-          panel carries no header: the document's own H1 is the title). */}
+          panel carries no title: the document's own H1 is the title). */}
       <div
         ref={scrollBodyRef}
         onScroll={handleBodyScroll}

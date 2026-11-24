@@ -13657,6 +13657,9 @@
         "fallbackTitle": "Canvas de pesquisa",
         "writing": "Escrevendo o canvas…"
       },
+      "header": {
+        "timeline": "Linha do tempo"
+      },
       "toolbar": {
         "finishingTouch": "Adicionar o toque final",
         "format": "Formato",
