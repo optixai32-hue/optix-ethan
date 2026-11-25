@@ -105,17 +105,22 @@
 }
 
 /* ==========================================================================
-   THEME — main view background
+   THEME — ALL page backgrounds pure white (background ONLY)
    --------------------------------------------------------------------------
-   The main view (the content area right of the sidebar) paints through the
-   body's `bg-background`. Pure white in light mode ONLY — no design tokens
-   change, so buttons, user message bubbles, cards, code blocks, hover
-   states and the sidebar keep their existing colors. Scoped with
-   html:not(.dark) so dark mode is untouched. Unlayered so it wins over the
-   layered `bg-background` base rule regardless of source order.
+   Single token override: `--background-tint-01` drives every page-level
+   background in light mode (body via `bg-background`, main chat area,
+   welcome screen `radial-00` gradient, agents / settings / projects
+   containers, ...), so ALL arriére-plans turn pure white app-wide.
+   Component surfaces are deliberately untouched and keep their Opal
+   colors: user message bubbles, chips, model selector, cards, popover
+   and tags stay on tint-02 (#f0f0f1); inputs & tool cards on
+   neutral-01/02; code blocks on code-01 (#fafafa); buttons and hover /
+   selected states unchanged; the sidebar keeps its tint-02 background.
+   Dark mode untouched: `:root:not(.dark)` matches only in light mode
+   (and beats opal's `:root` token definition on specificity + order).
    ========================================================================== */
-html:not(.dark) body {
-  background-color: #ffffff;
+:root:not(.dark) {
+  --background-tint-01: #ffffff;
 }
 
 /* Markdown chat overrides — placed in `utilities` so they sit in the same
