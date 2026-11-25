@@ -359,10 +359,11 @@ const ChatScrollContainer = React.memo(
         return () => clearTimeout(timeoutId);
       }, [sessionId, anchorSelector, anchorOffsetPx, updateScrollState]);
 
-      // NOTE: intentionally no mask-image on this scroll container. A CSS
-      // mask forces Chrome to rasterize the whole chat with grayscale
-      // antialiasing (no subpixel), which reads as a slight blur on the
-      // assistant response text. Crisp text beats the decorative edge fade.
+      // Edge fades are rendered as gradient OVERLAYS (see below), not a
+      // mask-image. A CSS mask forces Chrome to rasterize the whole chat
+      // with grayscale antialiasing (no subpixel), which reads as a slight
+      // blur on the assistant response text. Overlays paint the same 1rem
+      // fade on top of the content without touching text rendering.
 
       return (
         <div className="flex flex-col flex-1 min-h-0 w-full relative overflow-hidden mb-1">
@@ -404,6 +405,28 @@ const ChatScrollContainer = React.memo(
               <div ref={endDivRef} />
             </div>
           </div>
+
+          {/* 1rem edge fades (top/bottom), same ramp as the previous
+              mask-image. Overlays sit above the scroll content but are
+              pointer-transparent, so text keeps crisp subpixel AA. */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 z-20"
+            style={{
+              height: "1rem",
+              background:
+                "linear-gradient(to bottom, var(--background-tint-01) 0%, transparent 100%)",
+            }}
+          />
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-20"
+            style={{
+              height: "1rem",
+              background:
+                "linear-gradient(to top, var(--background-tint-01) 0%, transparent 100%)",
+            }}
+          />
         </div>
       );
     }
