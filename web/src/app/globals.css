@@ -104,6 +104,20 @@
   }
 }
 
+/* ==========================================================================
+   THEME — main view background
+   --------------------------------------------------------------------------
+   The main view (the content area right of the sidebar) paints through the
+   body's `bg-background`. Pure white in light mode ONLY — no design tokens
+   change, so buttons, user message bubbles, cards, code blocks, hover
+   states and the sidebar keep their existing colors. Scoped with
+   html:not(.dark) so dark mode is untouched. Unlayered so it wins over the
+   layered `bg-background` base rule regardless of source order.
+   ========================================================================== */
+html:not(.dark) body {
+  background-color: #ffffff;
+}
+
 /* Markdown chat overrides — placed in `utilities` so they sit in the same
    cascade layer as `@tailwindcss/typography` (which v4 emits there). The
    plugin's selectors use `:where()` (zero specificity), so our regular
