@@ -12,7 +12,11 @@ import {
   WebVitals,
 } from "@/lib/analytics/shared";
 import Script from "next/script";
-import { DM_Mono, Hanken_Grotesk } from "next/font/google";
+import {
+  Instrument_Sans,
+  JetBrains_Mono,
+  Source_Serif_4,
+} from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { TooltipProvider } from "@radix-ui/react-tooltip";
 import StatsOverlayLoader from "@/components/dev/StatsOverlayLoader";
@@ -29,18 +33,39 @@ import { DirectionProvider } from "@radix-ui/react-direction";
 import { cookies } from "next/headers";
 import { htmlDirForLocale, messageLocale, type HtmlDir } from "@/i18n/config";
 
-// No generic at the end of either fallback list: the generic comes last in
-// the composed --font-* variables on <html> below, after the per-locale CJK
-// tail (--font-cjk-sans, defined in globals.css). A generic here would sit
-// before the CJK fonts and swallow every CJK codepoint.
-const hankenGrotesk = Hanken_Grotesk({
+// Claude-style typography system, three roles (font FAMILIES only — every
+// size / weight / line-height / letter-spacing token is untouched):
+//   --font-anthropic-sans  → the whole application UI (body default, the
+//     font-hanken/font-sans utilities and every Opal text preset resolve
+//     through the legacy aliases below)
+//   --font-anthropic-serif → assistant-generated prose (.prose-onyx in
+//     custom-code-styles.css): paragraphs, headings, lists, quotations
+//   --font-anthropic-mono  → code blocks, inline code, terminal output
+//     (the font-mono utility + pre/code in chat)
+//
+// The Anthropic brand fonts themselves are proprietary, so licensed
+// equivalents are loaded here:
+//   Instrument Sans  ≈ Styrene B  (Anthropic Sans)
+//   Source Serif 4   ≈ Tiempos    (Anthropic Serif)
+//   JetBrains Mono   ≈ Söhne Mono (Anthropic Mono)
+//
+// No generic at the end of any fallback list: the generic comes last in
+// the composed --font-* variables on <html> below, after the per-locale
+// CJK tail (--font-cjk-sans, defined in globals.css). A generic here
+// would sit before the CJK fonts and swallow every CJK codepoint.
+const anthropicSans = Instrument_Sans({
   subsets: ["latin"],
   display: "swap",
   fallback: ["-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto"],
 });
 
-const dmMono = DM_Mono({
-  weight: "400",
+const anthropicSerif = Source_Serif_4({
+  subsets: ["latin"],
+  display: "swap",
+  fallback: ["Georgia", "Times New Roman", "Times"],
+});
+
+const anthropicMono = JetBrains_Mono({
   subsets: ["latin"],
   display: "swap",
   fallback: [
@@ -93,14 +118,20 @@ export default async function Layout({ children }: LayoutProps) {
       // The app-wide font variables are composed here instead of with
       // next/font's `variable` option: the CJK tail (--font-cjk-sans,
       // globals.css) must vary with the locale, so the loaded-webfont chain
-      // and the tail have to be joined in one declaration. Every
-      // `var(--font-hanken-grotesk)` / `var(--font-dm-mono)` consumer (Opal
-      // text presets, the font-hanken/font-sans utilities, app CSS) resolves
-      // through these.
+      // and the tail have to be joined in one declaration.
+      //
+      // The legacy variables (--font-hanken-grotesk / --font-dm-mono —
+      // consumed by the Opal text presets, the font-hanken/font-sans
+      // utilities and app CSS) alias the new stacks, so every existing
+      // consumer resolves to the new families without touching the shared
+      // design tokens.
       style={
         {
-          "--font-hanken-grotesk": `${hankenGrotesk.style.fontFamily}, var(--font-cjk-sans), sans-serif`,
-          "--font-dm-mono": `${dmMono.style.fontFamily}, var(--font-cjk-sans), monospace`,
+          "--font-anthropic-sans": `${anthropicSans.style.fontFamily}, var(--font-cjk-sans), sans-serif`,
+          "--font-anthropic-serif": `${anthropicSerif.style.fontFamily}, var(--font-cjk-sans), serif`,
+          "--font-anthropic-mono": `${anthropicMono.style.fontFamily}, var(--font-cjk-sans), monospace`,
+          "--font-hanken-grotesk": `var(--font-anthropic-sans)`,
+          "--font-dm-mono": `var(--font-anthropic-mono)`,
         } as React.CSSProperties
       }
       suppressHydrationWarning

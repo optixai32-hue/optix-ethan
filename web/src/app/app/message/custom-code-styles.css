@@ -44,6 +44,48 @@
   --tw-prose-td-borders: var(--border-01);
 }
 
+/* Claude-style typography — font FAMILIES only (no size / weight /
+   line-height / letter-spacing changes). The three variables are composed
+   in src/app/layout.tsx:
+     --font-anthropic-sans  → the whole application UI
+     --font-anthropic-serif → assistant-generated prose (this rule)
+     --font-anthropic-mono  → code blocks, inline code, terminal output
+   Unlayered so it overrides the font-main-content-body utility on the same
+   element; paragraphs, headings, lists and quotations inherit the serif.
+   Code inside prose keeps the mono stack (font-mono utility + pre rule
+   below). User messages and all UI chrome stay on the sans stack. */
+.prose-onyx {
+  font-family: var(--font-anthropic-serif);
+}
+
+/* Prose children re-declare the sans stack themselves (MemoizedParagraph
+   renders the mainContentBody text preset, headings/lists may carry font
+   utilities too), so re-apply the serif at the same level. Unlayered rules
+   beat the layered utilities without touching any metric. */
+.prose-onyx p,
+.prose-onyx h1,
+.prose-onyx h2,
+.prose-onyx h3,
+.prose-onyx h4,
+.prose-onyx h5,
+.prose-onyx h6,
+.prose-onyx ul,
+.prose-onyx ol,
+.prose-onyx li,
+.prose-onyx blockquote,
+.prose-onyx figcaption,
+.prose-onyx td,
+.prose-onyx th {
+  font-family: var(--font-anthropic-serif);
+}
+
+/* Fenced code blocks in chat: the Tailwind Typography plugin leaves
+   pre/code font-family unset, so pin the Anthropic Mono stack explicitly. */
+pre.hljs,
+pre.hljs code {
+  font-family: var(--font-anthropic-mono);
+}
+
 /* Light mode syntax highlighting (Atom One Light) */
 .hljs {
   color: #383a42 !important;

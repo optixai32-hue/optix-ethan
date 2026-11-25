@@ -42,6 +42,15 @@ module.exports = {
         "3xl": "1700px",
         "4xl": "2000px",
       },
+      fontFamily: {
+        // Anthropic Mono — code blocks, inline code, terminal output and any
+        // other monospace content. The variable is composed in
+        // src/app/layout.tsx (loaded webfont + locale-aware CJK tail).
+        // sans/hanken stay defined by the @onyx-ai/opal preset and resolve
+        // through --font-anthropic-sans via the layout aliases; the serif
+        // role is applied in app CSS (.prose-onyx), not as a utility here.
+        mono: ['var(--font-anthropic-mono, "JetBrains Mono", monospace)'],
+      },
       width: {
         "message-xs": "450px",
         "message-sm": "550px",
