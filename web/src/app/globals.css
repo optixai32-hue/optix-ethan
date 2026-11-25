@@ -15,61 +15,6 @@
 @import "./css/desktop-titlebar.css";
 @config '../../tailwind.config.js';
 
-/* ==========================================================================
-   THEME — application surfaces
-   --------------------------------------------------------------------------
-   Design decision: the application surface is pure white (#FFFFFF); the
-   sidebar column is the only gray area (#F5F5F5), kept visually distinct
-   from the white main content without being too dark.
-
-   These are token-level overrides of the Opal design system (declared after
-   the `@import "@onyx-ai/opal/root.css"` above, so they win the cascade at
-   equal specificity). They re-point the shared surface tokens at pure white
-   in light mode; every component that references them follows automatically —
-   no per-component overrides. Borders, shadows, hover/disabled states and
-   dark mode are untouched.
-
-   Tokens re-pointed to white (light mode only):
-     --background-tint-01    body / main application background
-     --background-tint-02    cards, chat bubbles, popovers, tags
-     --background-neutral-01 subtle static surfaces (inputs, list rows)
-     --background-neutral-02 card headers, tool cards, table heads
-     --background-code-01    code block backgrounds
-
-   Tokens intentionally NOT changed:
-     --background-tint-00 / --background-neutral-00 (already #FFFFFF)
-     --background-tint-03/04, --background-neutral-03/04 (hover, disabled,
-       progress and other interaction affordances — not page surfaces)
-     inverted / dark-* tokens, and the whole `.dark` palette.
-   ========================================================================== */
-
-:root:not(.dark) {
-  --background-tint-01: #ffffff;
-  --background-tint-02: #ffffff;
-  --background-neutral-01: #ffffff;
-  --background-neutral-02: #ffffff;
-  --background-code-01: #ffffff;
-}
-
-/* Dedicated sidebar token. Light mode keeps the only gray area of the app;
-   dark mode preserves the token that the sidebar previously resolved to
-   (--background-tint-02 → --tint-90) so dark mode is unchanged. */
-:root {
-  --background-sidebar: #f5f5f5;
-}
-.dark {
-  --background-sidebar: var(--tint-90);
-}
-
-/* The sidebar column/overlay get `bg-background-tint-02` from Opal's frozen
-   styles (@onyx-ai/opal layouts/sidebar, bundled after this file). Retarget
-   them to the dedicated sidebar token — ancestor-scoped so the selector
-   outranks the library rule regardless of chunk order. */
-.opal-root-layout .opal-sidebar-root__column,
-.opal-root-layout .opal-sidebar-root__overlay {
-  background-color: var(--background-sidebar);
-}
-
 /*
   The default border color has changed to `currentcolor` in Tailwind CSS v4,
   so we've added these compatibility styles to make sure everything still
