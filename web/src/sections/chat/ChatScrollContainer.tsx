@@ -17,10 +17,6 @@ const DEFAULT_ANCHOR_OFFSET_PX = 16; // 1rem
 const DEFAULT_FADE_THRESHOLD_PX = 80; // 5rem
 const DEFAULT_BUTTON_THRESHOLD_PX = 32; // 2rem
 
-// Fade configuration
-const TOP_FADE_HEIGHT = "1rem";
-const BOTTOM_FADE_HEIGHT = "1rem";
-
 export interface ScrollState {
   isAtBottom: boolean;
   hasContentAbove: boolean;
@@ -58,14 +54,6 @@ export interface ChatScrollContainerProps {
   /** Full-width mode: edge-to-edge scroll container instead of the centered
    *  reading layout (drops the reserved scrollbar gutter). */
   fullWidth?: boolean;
-}
-
-// Build a CSS mask that fades content opacity at top/bottom edges
-function buildContentMask(): string {
-  // Mask uses black = visible, transparent = hidden
-  // Top: fades from transparent to visible over 1rem
-  // Bottom: fades from visible to transparent over 1rem
-  return `linear-gradient(to bottom, transparent 0%, transparent 0rem, black ${TOP_FADE_HEIGHT}, black calc(100% - ${BOTTOM_FADE_HEIGHT}), transparent 100%)`;
 }
 
 const ChatScrollContainer = React.memo(
@@ -371,8 +359,10 @@ const ChatScrollContainer = React.memo(
         return () => clearTimeout(timeoutId);
       }, [sessionId, anchorSelector, anchorOffsetPx, updateScrollState]);
 
-      // Build mask to fade content opacity at edges
-      const contentMask = buildContentMask();
+      // NOTE: intentionally no mask-image on this scroll container. A CSS
+      // mask forces Chrome to rasterize the whole chat with grayscale
+      // antialiasing (no subpixel), which reads as a slight blur on the
+      // assistant response text. Crisp text beats the decorative edge fade.
 
       return (
         <div className="flex flex-col flex-1 min-h-0 w-full relative overflow-hidden mb-1">
@@ -390,11 +380,6 @@ const ChatScrollContainer = React.memo(
               !fullWidth && "md:[scrollbar-gutter:stable_both-edges]"
             )}
             onScroll={handleScroll}
-            style={{
-              // Apply mask to fade content opacity at edges
-              maskImage: contentMask,
-              WebkitMaskImage: contentMask,
-            }}
           >
             <div
               ref={contentWrapperRef}
