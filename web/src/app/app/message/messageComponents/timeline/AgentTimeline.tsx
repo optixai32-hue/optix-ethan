@@ -2,10 +2,7 @@
 
 import React, { useMemo, useCallback } from "react";
 import { StopReason } from "@/app/app/services/streamingModels";
-import {
-  FullChatState,
-  RenderType,
-} from "@/app/app/message/messageComponents/types";
+import { FullChatState } from "@/app/app/message/messageComponents/types";
 import { TurnGroup } from "./transformers";
 import { cn } from "@opal/utils";
 import AgentAvatar from "@/refresh-components/avatars/AgentAvatar";
@@ -19,7 +16,6 @@ import {
 } from "@/app/app/message/messageComponents/timeline/hooks/useTimelineUIState";
 import {
   isResearchAgentPackets,
-  isSearchToolPackets,
   stepSupportsCollapsedStreaming,
   stepHasCollapsedStreamingContent,
 } from "@/app/app/message/messageComponents/timeline/packetHelpers";
@@ -30,7 +26,6 @@ import { StoppedHeader } from "@/app/app/message/messageComponents/timeline/head
 import { ParallelStreamingHeader } from "@/app/app/message/messageComponents/timeline/headers/ParallelStreamingHeader";
 import { useStreamingStartTime } from "@/app/app/stores/useChatSessionStore";
 import { ExpandedTimelineContent } from "./ExpandedTimelineContent";
-import { CollapsedStreamingContent } from "./CollapsedStreamingContent";
 import { TimelineRoot } from "@/app/app/message/messageComponents/timeline/primitives/TimelineRoot";
 import { TimelineHeaderRow } from "@/app/app/message/messageComponents/timeline/primitives/TimelineHeaderRow";
 
@@ -147,19 +142,12 @@ export const AgentTimeline = React.memo(function AgentTimeline({
     lastTurnGroup,
     lastStep,
     lastStepIsResearchAgent,
-    lastStepIsCodingAgent,
     lastStepSupportsCollapsedStreaming,
   } = useTimelineMetrics(turnGroups, userStopped);
 
   // Extract memory text, operation, and whether this is a memory-only timeline
   const { memoryText, memoryOperation, memoryId, memoryIndex, isMemoryOnly } =
     useTimelineStepState(turnGroups);
-
-  // Check if last step is a search tool for INLINE render type
-  const lastStepIsSearchTool = useMemo(
-    () => lastStep && isSearchToolPackets(lastStep.packets),
-    [lastStep]
-  );
 
   const { isExpanded, handleToggle, parallelActiveTab, setParallelActiveTab } =
     useTimelineExpansion(stopPacketSeen, lastTurnGroup, hasDisplayContent);
@@ -211,14 +199,11 @@ export const AgentTimeline = React.memo(function AgentTimeline({
   // Derive all UI state from inputs
   const {
     uiState,
-    showCollapsedCompact,
-    showCollapsedParallel,
     showParallelTabs,
     showDoneStep,
     showStoppedStep,
     hasDoneIndicator,
     showTintedBackground,
-    showRoundedBottom,
   } = useTimelineUIState({
     stopPacketSeen,
     hasPackets,
@@ -247,14 +232,6 @@ export const AgentTimeline = React.memo(function AgentTimeline({
 
     return totalSteps > 0;
   }, [collapsible, isMemoryOnly, uiState, stoppedStepsCount, totalSteps]);
-
-  // Determine render type override for collapsed streaming view
-  const collapsedRenderTypeOverride = useMemo(() => {
-    if (lastStepIsResearchAgent) return RenderType.HIGHLIGHT;
-    if (lastStepIsCodingAgent) return RenderType.HIGHLIGHT;
-    if (lastStepIsSearchTool) return RenderType.INLINE;
-    return RenderType.COMPACT;
-  }, [lastStepIsResearchAgent, lastStepIsCodingAgent, lastStepIsSearchTool]);
 
   // Header selection based on UI state
   const renderHeader = useCallback(() => {
@@ -372,32 +349,15 @@ export const AgentTimeline = React.memo(function AgentTimeline({
             "flex flex-1 min-w-0 h-full items-center justify-between p-1 rounded-t-12 transition-colors duration-300",
             headerIsInteractive && "hover:bg-background-tint-00",
             showTintedBackground && "bg-background-tint-00",
-            showRoundedBottom && "rounded-b-12"
+            !isExpanded && "rounded-b-12"
           )}
         >
           {renderHeader()}
         </div>
       }
     >
-      {/* Collapsed streaming view - single step compact mode */}
-      {showCollapsedCompact && lastStep && (
-        <CollapsedStreamingContent
-          step={lastStep}
-          chatState={chatState}
-          stopReason={stopReason}
-          renderTypeOverride={collapsedRenderTypeOverride}
-        />
-      )}
-
-      {/* Collapsed streaming view - parallel tools compact mode */}
-      {showCollapsedParallel && parallelActiveStep && (
-        <CollapsedStreamingContent
-          step={parallelActiveStep}
-          chatState={chatState}
-          stopReason={stopReason}
-          renderTypeOverride={RenderType.HIGHLIGHT}
-        />
-      )}
+      {/* Collapsed: only the original header (current activity + toggle).
+          The compact detail preview is intentionally not rendered. */}
 
       {/* Expanded timeline view */}
       {isExpanded && (
