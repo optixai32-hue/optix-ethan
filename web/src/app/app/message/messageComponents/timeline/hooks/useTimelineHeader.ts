@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import { useLocale, useTranslations } from "next-intl";
-import { TurnGroup } from "../transformers";
+import { useTranslations } from "next-intl";
+import { TurnGroup, TransformedStep } from "../transformers";
 import {
   PacketType,
   SearchToolPacket,
@@ -17,9 +17,80 @@ export interface TimelineHeaderResult {
   userStopped: boolean;
 }
 
+export interface ActivityStep {
+  /** The step's stable key from the packet stream. */
+  key: string;
+  /** A translated activity name derived from an actual packet. */
+  name: string;
+}
+
+/**
+ * The activity names of the steps that actually happened, in stream order.
+ * Every name comes from a real packet in the timeline: a step whose first
+ * packet we cannot name produces no row, so nothing is invented. Internal
+ * document search stays silent, as in the current product decision.
+ */
+export function useActivitySteps(turnGroups: TurnGroup[]): ActivityStep[] {
+  const t = useTranslations("chat.messages.timeline");
+
+  return useMemo(() => {
+    const steps: ActivityStep[] = [];
+
+    for (const turn of turnGroups) {
+      for (const step of turn.steps) {
+        const firstPacket = step.packets[0];
+        if (!firstPacket) continue;
+
+        const packetType = firstPacket.obj.type;
+        let name: string | null = null;
+
+        if (packetType === PacketType.SEARCH_TOOL_START) {
+          const searchState = constructCurrentSearchState(
+            step.packets as SearchToolPacket[]
+          );
+          if (searchState.isInternetSearch) {
+            name = t("header.searchingWeb.label");
+          }
+        } else if (packetType === PacketType.FETCH_TOOL_START) {
+          name = t("header.reading.label");
+        } else if (packetType === PacketType.PYTHON_TOOL_START) {
+          name = t("header.executingCode.label");
+        } else if (packetType === PacketType.IMAGE_GENERATION_TOOL_START) {
+          name = t("header.generatingImages.label");
+        } else if (packetType === PacketType.FILE_READER_START) {
+          name = t("header.readingFile.label");
+        } else if (packetType === PacketType.CUSTOM_TOOL_START) {
+          const toolName = (firstPacket.obj as CustomToolStart).tool_name;
+          name = toolName
+            ? t("header.executingNamedTool.label", { toolName })
+            : t("header.executingTool.label");
+        } else if (
+          packetType === PacketType.MEMORY_TOOL_START ||
+          packetType === PacketType.MEMORY_TOOL_NO_ACCESS
+        ) {
+          name = t("header.updatingMemory.label");
+        } else if (packetType === PacketType.REASONING_START) {
+          name = t("header.thinking.label");
+        } else if (packetType === PacketType.DEEP_RESEARCH_PLAN_START) {
+          name = t("header.generatingPlan.label");
+        } else if (packetType === PacketType.RESEARCH_AGENT_START) {
+          name = t("header.researching.label");
+        }
+
+        if (name !== null) {
+          steps.push({ key: step.key, name });
+        }
+      }
+    }
+
+    return steps;
+  }, [turnGroups, t]);
+}
+
 /**
  * Hook that determines timeline header state based on current activity.
- * Returns header text, whether there are packets, and whether user stopped.
+ * Returns the current activity name, whether there are packets, and whether
+ * the user stopped. It uses the same activity names as the disclosure list.
  */
 export function useTimelineHeader(
   turnGroups: TurnGroup[],
@@ -27,7 +98,7 @@ export function useTimelineHeader(
   isGeneratingImage?: boolean
 ): TimelineHeaderResult {
   const t = useTranslations("chat.messages.timeline");
-  const locale = useLocale();
+  const activitySteps = useActivitySteps(turnGroups);
 
   return useMemo(() => {
     const hasPackets = turnGroups.length > 0;
@@ -53,112 +124,19 @@ export function useTimelineHeader(
       return { headerText: thinkingHeader, hasPackets, userStopped };
     }
 
-    const currentStep = currentTurn.steps[0];
+    const currentStep: TransformedStep | undefined = currentTurn.steps[0];
     if (!currentStep?.packets?.length) {
       return { headerText: thinkingHeader, hasPackets, userStopped };
     }
 
-    const firstPacket = currentStep.packets[0];
-    if (!firstPacket) {
-      return { headerText: thinkingHeader, hasPackets, userStopped };
-    }
+    const currentActivity = activitySteps.find(
+      (step) => step.key === currentStep.key
+    );
 
-    const packetType = firstPacket.obj.type;
-
-    // Determine header based on packet type
-    if (packetType === PacketType.SEARCH_TOOL_START) {
-      const searchState = constructCurrentSearchState(
-        currentStep.packets as SearchToolPacket[]
-      );
-      if (searchState.isInternetSearch) {
-        // Web search stays visible: "Searching the web".
-        return {
-          headerText: t("header.searchingWeb.label"),
-          hasPackets,
-          userStopped,
-        };
-      }
-      // PRODUCT DECISION: internal document search is not displayed (the
-      // "Searching internal documents"/"Reading" step is removed everywhere).
-      // The retrieval happens silently on the backend, so the header keeps
-      // the generic thinking state while it runs.
-      return { headerText: thinkingHeader, hasPackets, userStopped };
-    }
-
-    if (packetType === PacketType.FETCH_TOOL_START) {
-      return { headerText: t("header.reading.label"), hasPackets, userStopped };
-    }
-
-    if (packetType === PacketType.PYTHON_TOOL_START) {
-      return {
-        headerText: t("header.executingCode.label"),
-        hasPackets,
-        userStopped,
-      };
-    }
-
-    if (packetType === PacketType.IMAGE_GENERATION_TOOL_START) {
-      return {
-        headerText: t("header.generatingImages.label"),
-        hasPackets,
-        userStopped,
-      };
-    }
-
-    if (packetType === PacketType.FILE_READER_START) {
-      return {
-        headerText: t("header.readingFile.label"),
-        hasPackets,
-        userStopped,
-      };
-    }
-
-    if (packetType === PacketType.CUSTOM_TOOL_START) {
-      const toolName = (firstPacket.obj as CustomToolStart).tool_name;
-      return {
-        headerText: toolName
-          ? t("header.executingNamedTool.label", { toolName })
-          : t("header.executingTool.label"),
-        hasPackets,
-        userStopped,
-      };
-    }
-
-    if (
-      packetType === PacketType.MEMORY_TOOL_START ||
-      packetType === PacketType.MEMORY_TOOL_NO_ACCESS
-    ) {
-      return {
-        headerText: t("header.updatingMemory.label"),
-        hasPackets,
-        userStopped,
-      };
-    }
-
-    if (packetType === PacketType.REASONING_START) {
-      return {
-        headerText: t("header.thinking.label"),
-        hasPackets,
-        userStopped,
-      };
-    }
-
-    if (packetType === PacketType.DEEP_RESEARCH_PLAN_START) {
-      return {
-        headerText: t("header.generatingPlan.label"),
-        hasPackets,
-        userStopped,
-      };
-    }
-
-    if (packetType === PacketType.RESEARCH_AGENT_START) {
-      return {
-        headerText: t("header.researching.label"),
-        hasPackets,
-        userStopped,
-      };
-    }
-
-    return { headerText: thinkingHeader, hasPackets, userStopped };
-  }, [turnGroups, stopReason, isGeneratingImage, t, locale]);
+    return {
+      headerText: currentActivity?.name ?? thinkingHeader,
+      hasPackets,
+      userStopped,
+    };
+  }, [turnGroups, stopReason, isGeneratingImage, t, activitySteps]);
 }

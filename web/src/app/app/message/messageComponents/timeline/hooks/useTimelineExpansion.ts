@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { TurnGroup } from "../transformers";
 
 export interface TimelineExpansionState {
@@ -10,29 +10,20 @@ export interface TimelineExpansionState {
 
 /**
  * Manages expansion state for the timeline.
- * Auto-collapses when streaming completes or message content starts, and syncs parallel tab selection.
+ * The disclosure is owned by the user: it starts collapsed and only the
+ * toggle button changes it, whatever the streaming state does.
  */
 export function useTimelineExpansion(
-  stopPacketSeen: boolean,
+  _stopPacketSeen: boolean,
   lastTurnGroup: TurnGroup | undefined,
-  hasDisplayContent: boolean = false
+  _hasDisplayContent: boolean = false
 ): TimelineExpansionState {
   const [isExpanded, setIsExpanded] = useState(false);
   const [parallelActiveTab, setParallelActiveTab] = useState<string>("");
-  const userHasToggled = useRef(false);
 
   const handleToggle = useCallback(() => {
-    userHasToggled.current = true;
     setIsExpanded((prev) => !prev);
   }, []);
-
-  // Auto-collapse when streaming completes or message content starts
-  // BUT respect user intent - if they've manually toggled, don't auto-collapse
-  useEffect(() => {
-    if ((stopPacketSeen || hasDisplayContent) && !userHasToggled.current) {
-      setIsExpanded(false);
-    }
-  }, [stopPacketSeen, hasDisplayContent]);
 
   // Sync active tab when parallel turn group changes
   useEffect(() => {
