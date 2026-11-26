@@ -25,27 +25,33 @@
 /* Map Tailwind Typography prose variables to the project's color tokens.
    These auto-switch for dark mode via colors.css — no dark: modifier needed.
    Note: text-05 = highest contrast, text-01 = lowest.
-   Assistant response text uses text-05 (≈ black in light mode, ≈ white in
-   dark mode — 90% black / 95% white alpha-greys) per theme request; only
-   captions stay on text-03 for hierarchy, and pre-code keeps text-04
-   because code blocks are recolored by the .hljs theme below. */
+   Assistant response text is full black in light mode (--text-05 is only
+   90% black, which softens thin serif glyph edges); dark mode keeps its
+   near-white text-05. Only captions stay on text-03 for hierarchy, and
+   pre-code keeps text-04 because code blocks are recolored by .hljs below. */
 .prose-onyx {
-  --tw-prose-body: var(--text-05);
-  --tw-prose-headings: var(--text-05);
-  --tw-prose-lead: var(--text-05);
-  --tw-prose-links: var(--text-05);
-  --tw-prose-bold: var(--text-05);
-  --tw-prose-counters: var(--text-05);
-  --tw-prose-bullets: var(--text-05);
+  --onyx-prose-text: #000000;
+  --tw-prose-body: var(--onyx-prose-text);
+  --tw-prose-headings: var(--onyx-prose-text);
+  --tw-prose-lead: var(--onyx-prose-text);
+  --tw-prose-links: var(--onyx-prose-text);
+  --tw-prose-bold: var(--onyx-prose-text);
+  --tw-prose-counters: var(--onyx-prose-text);
+  --tw-prose-bullets: var(--onyx-prose-text);
   --tw-prose-hr: var(--border-02);
-  --tw-prose-quotes: var(--text-05);
+  --tw-prose-quotes: var(--onyx-prose-text);
   --tw-prose-quote-borders: var(--border-02);
   --tw-prose-captions: var(--text-03);
-  --tw-prose-code: var(--text-05);
+  --tw-prose-code: var(--onyx-prose-text);
   --tw-prose-pre-code: var(--text-04);
   --tw-prose-pre-bg: var(--background-code-01);
   --tw-prose-th-borders: var(--border-02);
   --tw-prose-td-borders: var(--border-01);
+}
+
+/* Dark mode: keep the original near-white text; only light mode goes black. */
+.dark .prose-onyx {
+  --onyx-prose-text: var(--text-05);
 }
 
 /* Claude-style typography — font FAMILIES only (no size / weight /
@@ -64,8 +70,9 @@
 
 /* Prose children re-declare the sans stack themselves (MemoizedParagraph
    renders the mainContentBody text preset, headings/lists may carry font
-   utilities too), so re-apply the serif at the same level. Unlayered rules
-   beat the layered utilities without touching any metric. */
+   utilities too), so re-apply the serif and the full-black prose colour at
+   the same level. Unlayered rules beat the layered utilities, including the
+   explicit text05 on MemoizedParagraph, without touching any metric. */
 .prose-onyx p,
 .prose-onyx h1,
 .prose-onyx h2,
@@ -81,6 +88,7 @@
 .prose-onyx td,
 .prose-onyx th {
   font-family: var(--font-anthropic-serif);
+  color: var(--onyx-prose-text);
 }
 
 /* Fenced code blocks in chat: the Tailwind Typography plugin leaves
